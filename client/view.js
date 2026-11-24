@@ -33,8 +33,11 @@ export class View {
     const cv = r.domElement; cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.lost = true; this.losses = (this.losses || 0) + 1; });
     cv.addEventListener('webglcontextrestored', () => this.restore());
   }
+  // every shader there is, made before it is needed (a scene of its own: only what is in it)
+  warm(part = null) { const r = this.renderer, was = r.getRenderTarget(); try { if (this.quality.post && this.post.main) r.setRenderTarget(this.post.main); if (part) r.compile(part, this.camera, this.scene); else r.compile(this.scene, this.camera); } finally { r.setRenderTarget(was); } }
   restore() {
     forget(this.scene, [this.envSky, this.envNight, this.sun.shadow.map && this.sun.shadow.map.texture, this.sky.material, ...this.post.targets(), ...this.post.materials()]);
+    if (this.world.remake) this.world.remake();
     this.post.main = null; this.post.w = 0; this.sun.shadow.map = null; this.envSky = skyEnvironment(this.renderer, '#27505f'); this.envNight = skyEnvironment(this.renderer, '#0a1420', 1);
     if (gfxChoice() === 'auto' && this.level !== 'low') this.setQuality(this.level === 'high' ? 'medium' : 'low'); else this.resize();
     this.light(); this.lost = false; if (this.onRestored) this.onRestored();

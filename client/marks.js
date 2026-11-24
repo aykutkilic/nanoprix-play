@@ -3,20 +3,20 @@
 import * as THREE from './vendor/three.module.min.js';
 
 import { weathered } from './weather.js';
+import { handOver } from './gpu.js';
 
-function creased(pos, idx, scale, cos = 0.8) {
-  // per corner: the mean of the faces round its vertex that lie within the crease angle
-  const n = idx.length, P = new Float32Array(n * 3), N = new Int8Array(n * 4), F = new Float32Array(n), nv = pos.length / 3;
-  const start = new Uint32Array(nv + 1); for (let k = 0; k < n; k++) start[idx[k] + 1]++; for (let k = 0; k < nv; k++) start[k + 1] += start[k];
-  const list = new Uint32Array(n), fill = start.slice();
-  for (let k = 0; k < n; k++) { const i = idx[k] * 3; P[k * 3] = pos[i] * scale; P[k * 3 + 1] = pos[i + 1] * scale; P[k * 3 + 2] = pos[i + 2] * scale; list[fill[idx[k]]++] = (k / 3) | 0; }
-  for (let k = 0; k < n; k += 3) { const a = k * 3, ux = P[a + 3] - P[a], uy = P[a + 4] - P[a + 1], uz = P[a + 5] - P[a + 2], vx = P[a + 6] - P[a], vy = P[a + 7] - P[a + 1], vz = P[a + 8] - P[a + 2]; F[k] = uy * vz - uz * vy; F[k + 1] = uz * vx - ux * vz; F[k + 2] = ux * vy - uy * vx; }
+// per corner: the mean of the faces round its vertex that lie within the crease angle (left off now and then: there are many corners)
+function* creased(pos, idx, scale, cos = 0.8) {
+  const n = idx.length, N = new Int8Array(n * 4), F = new Float32Array(n), nv = pos.length / 3, start = new Uint32Array(nv + 1); for (let k = 0; k < n; k++) start[idx[k] + 1]++; for (let k = 0; k < nv; k++) start[k + 1] += start[k];
+  const list = new Uint32Array(n), fill = start.slice(); for (let k = 0; k < n; k++) list[fill[idx[k]]++] = (k / 3) | 0; yield;
+  for (let k = 0; k < n; k += 3) { const a = idx[k] * 3, b = idx[k + 1] * 3, c = idx[k + 2] * 3, ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2], vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2], s2 = scale * scale; F[k] = (uy * vz - uz * vy) * s2; F[k + 1] = (uz * vx - ux * vz) * s2; F[k + 2] = (ux * vy - uy * vx) * s2; } yield;
+  const Lf = new Float32Array(n / 3); for (let f = 0; f < n; f += 3) Lf[f / 3] = Math.sqrt(F[f] * F[f] + F[f + 1] * F[f + 1] + F[f + 2] * F[f + 2]) || 1;
   for (let k = 0; k < n; k++) {
-    const f = ((k / 3) | 0) * 3, l0 = Math.hypot(F[f], F[f + 1], F[f + 2]) || 1; let x = 0, y = 0, z = 0;
-    for (let q = start[idx[k]]; q < start[idx[k] + 1]; q++) { const g = list[q] * 3, l = Math.hypot(F[g], F[g + 1], F[g + 2]) || 1; if ((F[f] * F[g] + F[f + 1] * F[g + 1] + F[f + 2] * F[g + 2]) / (l0 * l) > cos) { x += F[g]; y += F[g + 1]; z += F[g + 2]; } }
-    const l = Math.hypot(x, y, z) || 1; N[k * 4] = (x / l) * 127; N[k * 4 + 1] = (y / l) * 127; N[k * 4 + 2] = (z / l) * 127;
+    const f = ((k / 3) | 0) * 3, l0 = Lf[f / 3], ax = F[f] / l0, ay = F[f + 1] / l0, az = F[f + 2] / l0; let x = 0, y = 0, z = 0;
+    for (let q = start[idx[k]], e = start[idx[k] + 1]; q < e; q++) { const t = list[q], g = t * 3; if (ax * F[g] + ay * F[g + 1] + az * F[g + 2] > cos * Lf[t]) { x += F[g]; y += F[g + 1]; z += F[g + 2]; } }
+    const l = Math.sqrt(x * x + y * y + z * z) || 1; N[k * 4] = (x / l) * 127; N[k * 4 + 1] = (y / l) * 127; N[k * 4 + 2] = (z / l) * 127; if ((k & 2047) === 2047) yield;
   }
-  return { P, N };
+  return N;
 }
 export function buildMarks(W) {
   const { root, A, night, net, height } = W, L = A.landmarks, V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -35,12 +35,21 @@ export function buildMarks(W) {
   };
   weathered(stone, { snow: 0.88, wet: 0.2, shine: 0.5 });
   W.marks = [];
+  const empty = new THREE.BufferGeometry(); empty.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3)); empty.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 0);
+  function* make(q) {
+    const m = q.m, P = L.pos.subarray(m.v0 * 3, (m.v0 + m.vn) * 3), X = L.idx.subarray(m.i0, m.i0 + m.in), N = yield* creased(P, X, m.q), n = m.in, C = new Uint8Array(n * 4), I = new Int16Array(n * 4); yield;
+    for (let k = 0; k < n; k++) { const v = m.v0 + X[k], i = v * 4; C[k * 4] = L.col[i]; C[k * 4 + 1] = L.col[i + 1]; C[k * 4 + 2] = L.col[i + 2]; C[k * 4 + 3] = L.col[i + 3]; I[k * 4] = L.pos[v * 3]; I[k * 4 + 1] = L.pos[v * 3 + 1]; I[k * 4 + 2] = L.pos[v * 3 + 2]; if ((k & 8191) === 8191) yield; } // (colours already linear, as glTF's are; the fourth: what kind of thing it is)
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(I, 4)); g.setAttribute('normal', new THREE.BufferAttribute(N, 4, true)); g.setAttribute('color', new THREE.BufferAttribute(C, 4, true)); g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, (m.top * 0.5) / m.q, 0), Math.hypot(m.r, m.top * 0.55) / m.q * 1.15); yield; q.o.geometry = handOver(g); q.made = true;
+  }
+  // made as one comes near, the nearest first, a little each frame; let go of when long out of sight
+  const all = []; let job = null;
+  W.updateMarks = (cam, far, ms = 1.6) => {
+    const t0 = performance.now(); let best = null; for (const q of all) { const d = Math.hypot(q.m.x - cam.x, q.m.z - cam.z) - q.m.r, see = d < Math.min(far * q.reach, q.max); q.o.visible = see && q.made; if (see) { q.off = 0; if (!q.made && (!best || d < best.d)) best = { d, q }; } else if (q.made) { q.off ||= t0; if (t0 - q.off > 15000) { q.o.geometry.dispose(); q.o.geometry = empty; q.made = false; } } }
+    let n = 0; while (performance.now() - t0 < ms) { if (!job) { if (!best || n) break; job = { q: best.q, it: make(best.q) }; } if (job.it.next().done) { job = null; n++; } } return job || best ? 1 : 0;
+  };
+  const again = W.remake; W.remake = () => { if (again) again(); job = null; for (const q of all) { q.o.geometry = empty; q.made = false; } };
   for (const m of L.items) {
-    const { P, N } = creased(L.pos.subarray(m.v0 * 3, (m.v0 + m.vn) * 3), L.idx.subarray(m.i0, m.i0 + m.in), m.q);
-    const n = m.in, C = new Uint8Array(n * 4), I = new Int16Array(n * 4); void P;
-    for (let k = 0; k < n; k++) { const v = m.v0 + L.idx[m.i0 + k], i = v * 4; for (let q = 0; q < 4; q++) C[k * 4 + q] = L.col[i + q]; for (let q = 0; q < 3; q++) I[k * 4 + q] = L.pos[v * 3 + q]; } // (colours already linear, as glTF's are; the fourth: what kind of thing it is)
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(I, 4)); g.setAttribute('normal', new THREE.BufferAttribute(N, 4, true)); g.setAttribute('color', new THREE.BufferAttribute(C, 4, true)); g.computeBoundingSphere();
-    const o = new THREE.Mesh(g, stone); o.position.set(m.x, m.y, m.z); o.scale.setScalar(m.q); o.castShadow = o.receiveShadow = true; o.name = m.name; root.add(o); o.updateMatrix(); o.matrixAutoUpdate = false; W.keeper.add(o, m.top > 9 ? 9 : m.top > 4 || m.hero ? 2.2 : 1.12);
+    const o = new THREE.Mesh(empty, stone); o.position.set(m.x, m.y, m.z); o.scale.setScalar(m.q); o.castShadow = o.receiveShadow = true; o.name = m.name; o.visible = false; W.still.add(o); all.push({ m, o, made: false, off: 0, reach: m.top > 9 ? 9 : m.top > 4 || m.hero ? 2.2 : 1.12, max: m.top > 9 ? 1e9 : 90 + m.r * 130 + m.top * 60 });
     W.marks.push({ ...m, obj: o });
     if (W.coast(m.x, m.z) < 10) W.light(m.x, m.z, Math.min(6, m.r * 0.6), 0.5);
   }
@@ -61,20 +70,20 @@ export function buildMarks(W) {
       for (const s of [-1, 1]) { const leg = piece(new THREE.BoxGeometry(0.55, H, 0.8), portal, p.x + side.x * s * hw, base + H / 2, p.z + side.z * s * hw, g); leg.rotation.y = yaw; }
       for (const y of [dy - 0.75, (dy + topY) / 2 + 0.6, topY - 0.5]) { const bar = piece(new THREE.BoxGeometry(hw * 2, 0.7, 0.6), portal, p.x, y, p.z, g); bar.rotation.y = yaw; }
     }
-    const back = 24, hang = [];
+    const back = 24, hang = [], cableI = lit(steel.clone(), '#ff2d55', 3.2);
     for (const s of [-1, 1]) {
       const pts = [];
       for (let k = -8; k <= 72; k++) { const t = k / 64; let y, c; if (t < 0 || t > 1) { const e = t < 0 ? -t : t - 1, f = Math.min(1, e * 8); const q = t < 0 ? a.clone().addScaledVector(dir, -f * back) : b.clone().addScaledVector(dir, f * back); c = q; y = topY + (Math.max(height(q.x, q.z), deck(t < 0 ? 0 : 1) - 0.5) - topY) * f; } else { c = centre(t); const u = t * 2 - 1, low = deck(0.5) + 0.55; y = low + (topY - low) * u * u; if (k % 2 === 0 && k > 1 && k < 63) hang.push([c.x + side.x * s * hw, deck(t), c.z + side.z * s * hw, y - deck(t)]); } pts.push(V(c.x + side.x * s * hw, y, c.z + side.z * s * hw)); }
       piece(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 160, 0.11, 6), cable, 0, 0, 0, g);
     }
-    const hi = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 4).translate(0, 0.5, 0), cable, hang.length), M = new THREE.Matrix4(); hang.forEach(([x, y, z, h], k) => { M.makeScale(1, h, 1).setPosition(x, y, z); hi.setMatrixAt(k, M); }); hi.computeBoundingSphere(); g.add(hi);
+    const hi = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 4).translate(0, 0.5, 0), cableI, hang.length), M = new THREE.Matrix4(); hang.forEach(([x, y, z, h], k) => { M.makeScale(1, h, 1).setPosition(x, y, z); hi.setMatrixAt(k, M); }); hi.computeBoundingSphere(); g.add(hi);
     // the box girder under the deck
     const gp = [], gi = []; for (let k = 0; k <= 60; k++) { const t = k / 60, c = centre(t), y = deck(t); for (const [o, dy] of [[-hw, -0.05], [-hw * 0.6, -0.5], [hw * 0.6, -0.5], [hw, -0.05]]) gp.push(c.x + side.x * o, y + dy, c.z + side.z * o); if (k < 60) for (let q = 0; q < 3; q++) { const n = k * 4 + q; gi.push(n, n + 4, n + 1, n + 1, n + 4, n + 5); } }
     const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3)); gg.setIndex(gi); gg.computeVertexNormals(); const gm = steel.clone(); gm.side = THREE.DoubleSide; const girder = new THREE.Mesh(gg, gm); girder.castShadow = true; g.add(girder);
-    W.bridgeLights.push(cable, portal);
+    W.bridgeLights.push(cable, portal, cableI);
     const mid = centre(0.5); for (let k = 0; k <= 12; k++) { const c = centre(k / 12); W.light(c.x, c.z, 3, 0.5); } W.spot(mid.x, 3, mid.z, '#6a7cff', 40, 60);
   }
-  W.updates.push((dt, now) => { if (night.value > 0) W.bridgeLights.forEach((m, k) => m.emissive.setHSL(((now / 24000) + k * 0.08) % 1, 0.9, 0.5)); });
+  W.updates.push((dt, now) => { if (night.value > 0) W.bridgeLights.forEach((m, k) => m.emissive.setHSL(((now / 24000) + (k % 3) * 0.08) % 1, 0.9, 0.5)); });
   // ------------------------------------------------------------ the Galata bridge: its restaurants below and fishermen above
   { const r = net.byId.get('galata'), m1 = lit(mat('#6d3a2c'), '#ff8a3a', 1.1), rodM = mat('#3a2a1a'), coats = ['#32425a', '#7a3b34', '#4d5b3c', '#c9a13a'].map((c) => mat(c));
     for (let i = 2; i < r.n - 2; i++) { const a = i * 3, x = r.p[a], z = r.p[a + 1], y = r.p[a + 2]; if (W.coast(x, z) > -0.8) continue; const dx = r.p[a + 3] - x, dz = r.p[a + 4] - z, l = Math.hypot(dx, dz), yaw = Math.atan2(dx, dz);

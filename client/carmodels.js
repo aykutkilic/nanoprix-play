@@ -3,6 +3,7 @@
 // About 1.2 long, nose along +z, wheels on y = 0. The geometry of a kind is
 // made once; each car has its own paint and tail lights.
 import * as THREE from './vendor/three.module.min.js';
+import { pack } from './gpu.js';
 
 const S = (o) => new THREE.MeshStandardMaterial(o), Ph = (o) => new THREE.MeshPhysicalMaterial(o);
 const MAT = {
@@ -98,6 +99,13 @@ function kindOf(kind) {
 }
 const PLATE = new Map();
 function plate(text) { if (PLATE.has(text)) return PLATE.get(text); const c = document.createElement('canvas'); c.width = 128; c.height = 30; const g = c.getContext('2d'); g.fillStyle = '#f6f6f2'; g.fillRect(0, 0, 128, 30); g.fillStyle = '#1747a6'; g.fillRect(0, 0, 14, 30); g.fillStyle = '#111'; g.font = '700 22px "Arial Narrow", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 71, 16, 108); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; PLATE.set(text, t); return t; }
+const LOD = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45 }), lods = new Map();
+function lodGeo(kind, geo, W, R) {
+  if (lods.has(kind)) return lods.get(kind); const pos = [], nor = [], col = [], put = (g, m, M) => { if (!g || !m) return; const q = g.index ? g.toNonIndexed() : g, p = q.attributes.position, n = q.attributes.normal, v = new THREE.Vector3(), c = m.color; for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i); if (M) v.applyMatrix4(M); pos.push(v.x, v.y, v.z); v.fromBufferAttribute(n, i); nor.push(v.x, v.y, v.z); col.push(c.r, c.g, c.b); } };
+  for (const m in geo) if (m !== 'paint' && m !== 'tail' && m !== 'clear') put(geo[m], MAT[m], null); for (const z of R.wz) for (const s of [-1, 1]) { const M = new THREE.Matrix4().makeTranslation(s * R.wx, R.wr, z); put(W.tyre, MAT.tyre, M); put(W.rim, MAT[R.rim], M); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); lods.set(kind, pack(g)); return g;
+}
+export function lodCar(g, far) { const u = g.userData; if (!u.lod || u.far === far) return; u.far = far; u.lod.visible = far; for (const o of u.detail) o.visible = !far; }
 // the dark under a car, darkest where its wheels touch the road
 const contacts = new Map(), contactSize = new Map();
 function contactTex(kind, R, geo) {
@@ -115,8 +123,10 @@ export function makeCarModel(kind, color) {
   for (const [z, y, ry] of [[zf, yf, 0], [zb, yb, Math.PI]]) { if (!z) continue; const o = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.034), pm); o.position.set(0, y, z); o.rotation.y = ry; body.add(o); }
   const wheels = [];
   for (const z of R.wz) for (const s of [-1, 1]) { const piv = new THREE.Group(); piv.position.set(s * R.wx, R.wr, z); g.add(piv); const w = new THREE.Group(); piv.add(w); for (const [k, m] of [['tyre', MAT.tyre], ['dark', MAT.under], ['rim', MAT[R.rim]], ['white', MAT.white]]) if (W[k]) { const o = new THREE.Mesh(W[k], m); o.castShadow = k === 'tyre'; w.add(o); } wheels.push({ piv, w, front: z > 0 }); }
+  // from afar: all but the paint and the tail lamps in one piece
+  const lod = new THREE.Mesh(lodGeo(kind, geo, W, R), LOD); lod.castShadow = true; lod.visible = false; body.add(lod); const detail = [...body.children.filter((o) => o !== lod && o.material !== paint && o.material !== tail), ...wheels.map((w) => w.piv)];
   const contact = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: contactTex(kind, R, geo), color: '#000000', transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -4 })); contact.scale.set(contactSize.get(kind)[0], 1, contactSize.get(kind)[1]); contact.position.y = 0.008; contact.renderOrder = 1; g.add(contact);
-  g.userData = { ...g.userData, body, contact, wheels, tail, paint, wr: R.wr, spin: 0, roll: 0, pitch: 0, bob: 0 };
+  g.userData = { ...g.userData, body, detail, lod, far: false, contact, wheels, tail, paint, wr: R.wr, spin: 0, roll: 0, pitch: 0, bob: 0 };
   return g;
 }
 const PAINT = ['#e6e4de', '#e6e4de', '#1c1e22', '#8f969b', '#8f969b', '#5b6167', '#a3221d', '#1f3f73', '#3c4a3e', '#b89a6a', '#d9dde0'];

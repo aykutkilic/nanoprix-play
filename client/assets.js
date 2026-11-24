@@ -1,14 +1,11 @@
 // The baked city (tools/): fetched, unpacked, handed out as arrays.
 const BASE = new URL('../assets/', import.meta.url);
-const get = async (n) => { const r = await fetch(new URL(n, BASE)); if (!r.ok) throw new Error(`${n}: ${r.status}`); return r; };
-async function gunzip(n, onBytes) {
-  const r = await get(n);
-  const counted = r.body.pipeThrough(new TransformStream({ transform(c, k) { onBytes(c.byteLength); k.enqueue(c); } }));
-  return new Response(counted.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
-}
-export async function loadAssets(onProgress) {
-  let got = 0; const total = 16e6, tick = (b) => { got += b; onProgress(Math.min(1, got / total)); };
-  const [roads, streets, map, marks, tb, lb, cb, ports, shipsBin] = await Promise.all([get('roads.json').then((r) => r.json()), get('streets.json').then((r) => r.json()), get('map.json').then((r) => r.json()), get('landmarks.json').then((r) => r.json()), gunzip('terrain.bin', tick), gunzip('landmarks.bin', tick), gunzip('city.bin', tick), get('ports.json').then((r) => r.json()), gunzip('ships.bin', tick)]);
+// a file as it comes, with word of each piece
+async function bytes(n, on) { const r = await fetch(new URL(n, BASE)); if (!r.ok) throw new Error(`${n}: ${r.status}`); return r.body.pipeThrough(new TransformStream({ transform(c, k) { on(n, c.byteLength); k.enqueue(c); } })); }
+const json = async (n, on) => JSON.parse(await new Response(await bytes(n, on)).text());
+const gunzip = async (n, on) => new Response((await bytes(n, on)).pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+export async function loadAssets(on = () => {}) {
+  const [roads, streets, map, marks, tb, lb, cb, ports, shipsBin] = await Promise.all([json('roads.json', on), json('streets.json', on), json('map.json', on), json('landmarks.json', on), gunzip('terrain.bin', on), gunzip('landmarks.bin', on), gunzip('city.bin', on), json('ports.json', on), gunzip('ships.bin', on)]);
   // terrain: heights as deltas along the rows, low and high bytes apart
   const { w, h } = map.grid, N = w * h, u = new Uint8Array(tb), H = new Float32Array(N);
   for (let k = 0, v = 0; k < N; k++) { const d = u[k] | (u[N + k] << 8); v = k % w ? (v + d) & 65535 : d; H[k] = v / 400 - 20; }

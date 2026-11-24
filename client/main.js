@@ -10,6 +10,7 @@ import { buildWorld } from './world.js';
 import { Hud, fmt, esc } from './hud.js';
 import { Game } from './game.js';
 import { Fx } from './fx.js';
+import { Loading } from './loading.js';
 import { Weather } from './weather.js';
 import { CHOICES, WEATHER, mixWeather } from '../shared/weather.js';
 import { Audio } from './audio.js';
@@ -29,15 +30,15 @@ profile = sanitizeProfile({ name: profile.name || ['Taksici', 'Simitçi', 'Kapta
 const saveProfile = () => store('profile', JSON.stringify(profile));
 
 // ---------------------------------------------------------------- loading
-ui.innerHTML = `<div class="loading"><h1>NANO<span>PRIX</span><small>${t('loading')}</small></h1><div class="bar"><i></i></div></div>`;
+const loading = new Loading(ui);
 let A, net, view, game, hud, audio, fx, input, weather;
 try {
-  A = await loadAssets((f) => { const b = $('.loading .bar i'); if (b) b.style.width = `${f * 92}%`; });
+  A = await loadAssets((file, n) => loading.bytes(file, n));
   net = new Network(A.roads); new Streets(net, A.streets); view = new View($('#gl')); await new Promise((r) => setTimeout(r, 20));
-  view.world = buildWorld(view.scene, A, net); view.applyNight(0);
-  hud = new Hud(hudEl, A, net); audio = new Audio(); fx = new Fx(view.scene); input = new Input(document.body); weather = new Weather(view.scene, view.world, fx, audio); view.world.sea = (x, z) => weather.sea(x, z); game = new Game({ view, net, hud, audio, fx, input, weather });
-} catch (e) { $('.loading').innerHTML = `<h1>NANO<span>PRIX</span><small>${esc(e.message)}</small></h1>`; throw e; }
-{ const l = $('.loading'); l.style.opacity = 0; setTimeout(() => l.remove(), 700); document.body.appendChild(l); ui.innerHTML = ''; }
+  view.world = await buildWorld(view.scene, A, net, (s) => loading.stage(s)); view.applyNight(0);
+  hud = new Hud(hudEl, A, net); audio = new Audio(); fx = new Fx(view.scene); input = new Input(document.body); weather = new Weather(view.scene, view.world, fx, audio); view.world.sea = (x, z) => weather.sea(x, z); game = new Game({ view, net, hud, audio, fx, input, weather }); view.warm();
+} catch (e) { loading.fail(e.message); throw e; }
+loading.done(); ui.innerHTML = '';
 
 // ---------------------------------------------------------------- rooms
 let raceStats = null, statsMe = 0, resTab = 'classification', wantCruise = false, link = null, host = null, room = null, results = null, screen = 'home', myId = 0, busy = false;

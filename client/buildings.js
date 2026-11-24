@@ -8,7 +8,7 @@
 import * as THREE from './vendor/three.module.min.js';
 import { rng, noiseTexture } from './realism.js';
 import { weathered } from './weather.js';
-import { pack } from './gpu.js';
+import { pack, handOver } from './gpu.js';
 
 const K = { house: 0, flats: 1, old: 2, office: 3, glass: 4, tower: 5, shops: 6, works: 7, public: 8, yali: 9, mosque: 10, church: 11, hotel: 12 };
 const TILE = 60, lin = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
@@ -162,18 +162,24 @@ export function buildBuildings(W) {
   let cumba = [];
   const geoW = (g) => { const b = new THREE.BufferGeometry(); b.setAttribute('position', new THREE.Float32BufferAttribute(g.pos, 3)); b.setAttribute('normal', new THREE.Float32BufferAttribute(g.nor, 3)); b.setAttribute('color', new THREE.Float32BufferAttribute(g.col, 3)); b.setAttribute('aF', new THREE.Float32BufferAttribute(g.F, 4)); b.setAttribute('aK', new THREE.Float32BufferAttribute(g.K, 2)); b.setIndex(g.idx); return pack(b); };
   const geoT = (g) => { const b = new THREE.BufferGeometry(); b.setAttribute('position', new THREE.Float32BufferAttribute(g.pos, 3)); b.setAttribute('normal', new THREE.Float32BufferAttribute(g.nor, 3)); b.setAttribute('color', new THREE.Float32BufferAttribute(g.col, 3)); b.setAttribute('aR', new THREE.Float32BufferAttribute(g.R, 1)); b.setIndex(g.idx); return pack(b, 'aR'); };
-  const mesh = (geo, m) => { const o = new THREE.Mesh(geo, m); o.castShadow = o.receiveShadow = true; o.matrixAutoUpdate = false; geo.computeBoundingSphere(); root.add(o); return o; };
-  const makeBase = (t) => { const w = mk(), r = tr(); for (const o of t.at) raise(o, w, r, null); t.base = [mesh(geoW(w), wall), mesh(geoT(r), trim)]; };
-  const makeFine = (t) => { const w = mk(), r = tr(), f = tr(); cumba = []; for (const o of t.at) raise(o, w, r, f); const cw = mk(); for (const [q, y0, y1, c, k, s] of cumba) { walls(cw, q, y0, y1, c, k, s, y0 - 0.42, y1 - y0 + 0.42); } t.fine = []; if (f.idx.length) t.fine.push(mesh(geoT(f), trim)); if (cw.idx.length) t.fine.push(mesh(geoW(cw), wall)); };
-  const drop = (L) => { for (const o of L) { root.remove(o); o.geometry.dispose(); } };
+  const mesh = (geo, m) => { const o = new THREE.Mesh(geo, m); o.castShadow = o.receiveShadow = true; o.matrixAutoUpdate = false; geo.computeBoundingSphere(); handOver(geo); W.still.add(o); return o; };
+  function* makeBase(t) { const w = mk(), r = tr(); let n = 0; for (const o of t.at) { raise(o, w, r, null); if (++n % 5 === 0) yield; } yield; const a = geoW(w); yield; const b = geoT(r); yield; t.base = [mesh(a, wall), mesh(b, trim)]; }
+  function* makeFine(t) { const w = mk(), r = tr(), f = tr(); cumba = []; let n = 0; for (const o of t.at) { raise(o, w, r, f); if (++n % 4 === 0) yield; } yield; const cw = mk(); for (const [q, y0, y1, c, k, s] of cumba) { walls(cw, q, y0, y1, c, k, s, y0 - 0.42, y1 - y0 + 0.42); } yield; const L = []; if (f.idx.length) L.push(mesh(geoT(f), trim)); yield; if (cw.idx.length) L.push(mesh(geoW(cw), wall)); t.fine = L; }
+  let job = null;
+  const drop = (L) => { for (const o of L) { W.still.remove(o); o.geometry.dispose(); } };
+  // (after a lost context: all that was handed over is made again)
+  W.remake = () => { job = null; for (const t of list) { if (t.base) drop(t.base); if (t.fine) drop(t.fine); t.base = t.fine = null; } };
   W.buildings = count;
   // what is near is made, nearest first, a little each frame; what is long out of sight goes
-  W.updateBuildings = (cam, far, ms = 3.5) => {
+  W.updateBuildings = (cam, far, ms = 2.6) => {
     const t0 = performance.now(), want = []; let made = 0;
     for (const t of list) { const d = Math.hypot(t.x - cam.x, t.z - cam.z) - TILE * 0.71; t.d = d; const see = d < far; if (t.base) { for (const o of t.base) o.visible = see; if (see) t.used = t0; else if (t0 - t.used > 12000) { drop(t.base); t.base = null; } } else if (see) want.push(t); if (t.fine) { const n = d < 62; for (const o of t.fine) o.visible = n; if (!n && d > 120) { drop(t.fine); t.fine = null; } } }
-    want.sort((a, b) => a.d - b.d); for (const t of want) { makeBase(t); t.used = t0; made++; if (performance.now() - t0 > ms) return made; }
-    let best = null; for (const t of list) if (!t.fine && t.base && t.d < 45 && (!best || t.d < best.d)) best = t; if (best) { makeFine(best); made++; }
+    // one job at a time, left off when the frame's share is used up and taken up again in the next
+    const run = () => { for (;;) { const q = job.it.next(); if (q.done) { job.t.used = t0; job = null; made++; return true; } if (performance.now() - t0 > ms) return false; } };
+    if (job && !run()) return made + 1;
+    want.sort((a, b) => a.d - b.d); for (const t of want) { if (t.base) continue; job = { t, it: makeBase(t) }; if (!run() || performance.now() - t0 > ms) return made + 1; }
+    let best = null; for (const t of list) if (!t.fine && t.base && t.d < 45 && (!best || t.d < best.d)) best = t; if (best) { job = { t: best, it: makeFine(best) }; run(); made++; }
     return made;
   };
-  W.prime = (x, z, reach = 130, ms = 260) => { const c = { x, z }, t0 = performance.now(); while (performance.now() - t0 < ms && W.updateBuildings(c, reach, 40)); };
+  W.prime = (x, z, reach = 130, ms = 260) => { const c = { x, z }, t0 = performance.now(); while (performance.now() - t0 < ms && W.updateBuildings(c, reach, 40)); const t1 = performance.now(); if (W.updateMarks) while (performance.now() - t1 < ms * 0.7 && W.updateMarks(c, reach, 40)); };
 }

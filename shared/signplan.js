@@ -32,7 +32,7 @@ export function planSigns(net, marks = []) {
       for (const e of exits) {
         const d = e.r.a === hub ? 1 : -1, o = frame(e.r, d > 0 ? Math.min(9, e.r.len / 2) : e.r.len - Math.min(9, e.r.len / 2), d), vx = o.x - H.x, vz = o.z - H.z, a = wrapA(Math.atan2(In.dx, In.dz) - Math.atan2(vx, vz)); // (right is +)
         if (Math.abs(a) > 2.55) continue;
-        const name = e.r.id === 'yss' ? 'Yavuz Sultan Selim Köprüsü' : e.r.id === 'bogaz' ? 'Boğaziçi Köprüsü' : e.r.id === 'tup' ? 'Avrasya Tüneli' : e.r.id === 'fsm' ? 'FSM Köprüsü' : e.r.id === 'galata' ? 'Galata Köprüsü' : e.r.id === 'unk2' ? 'Atatürk Köprüsü' : e.r.id === 'd3' ? 'Haliç Köprüsü' : PLACE[far(e.r, e.to)] || e.r.name;
+        const name = e.r.id === 'yss' ? 'Yavuz Sultan Selim Köprüsü' : e.r.id === 'bogaz' ? 'Boğaziçi Köprüsü' : e.r.id === 'tup' ? 'Avrasya Tüneli' : e.r.id === 'camt' ? 'Çamlıca Tüneli' : e.r.id === 'fsm' ? 'FSM Köprüsü' : e.r.id === 'galata' ? 'Galata Köprüsü' : e.r.id === 'unk2' ? 'Atatürk Köprüsü' : e.r.id === 'd3' ? 'Haliç Köprüsü' : PLACE[far(e.r, e.to)] || e.r.name;
         const t = st && st.data.turns[`${r.id}>${e.r.id}@${hub}`]; // what the sign there really reads, where OSM has it
         rows.push({ real: !!t, items: t ? t.rows.slice(0, 3) : [{ name }], ref: t && t.ref.length ? t.ref : shield(e.r.id) ? [shield(e.r.id)] : [], a, arrow: Math.abs(a) < 0.5 ? 'up' : a > 0 ? (a > 1.15 ? 'right' : 'upright') : a < -1.15 ? 'left' : 'upleft', name, via: e.r.name, no: shield(e.r.id) });
       }

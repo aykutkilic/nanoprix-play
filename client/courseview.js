@@ -1,7 +1,7 @@
 // What a race puts on the road: the start gate, barriers across the side
 // roads, chevrons at the bends, simits, the traffic.
 import * as THREE from './vendor/three.module.min.js';
-import { makeTrafficModel, animateCar } from './carmodels.js';
+import { makeTrafficModel, animateCar, lodCar } from './carmodels.js';
 import { Crowd } from './crowd.js';
 import { drawnAt } from './roads.js';
 import { trafficAt } from '../shared/traffic.js';
@@ -65,7 +65,7 @@ export class CourseView {
     this.uT.value = (now / 1000) % 1000; this.uNight.value = this.night || 0;
     const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0), P = new THREE.Vector3(), S = new THREE.Vector3();
     this.simits.forEach((q, k) => { const near = Math.abs(q.x - car.x) + Math.abs(q.z - car.z) < 160, on = near && now > q.taken; M.compose(P.set(q.x, q.y + 0.42 + Math.sin(now / 300 + k) * 0.06, q.z), Q.setFromAxisAngle(UP, now / 600 + k), S.setScalar(on ? 1 : 0.0001)); this.sm.setMatrixAt(k, M); }); this.sm.instanceMatrix.needsUpdate = true;
-    this.near = []; this.traffic.forEach((v, k) => { const o = trafficAt(v, this.course, t, (v.o ||= {})), d = Math.hypot(o.x - car.x, o.z - car.z), m = this.tm[k]; m.visible = d < 170; if (!m.visible) return; m.position.set(o.x, o.y + drawnAt(this.net, o.x, o.z, o.y) - 0.004, o.z); m.rotation.set(-Math.atan(o.slope || 0), o.yaw, 0, 'YXZ'); if (d < 60) animateCar(m, o, Math.min(0.1, (now - (this.was || now)) / 1000) || 0.016, this.night || 0); if (d < 6) this.near.push(o); }); this.was = now;
+    this.near = []; this.traffic.forEach((v, k) => { const o = trafficAt(v, this.course, t, (v.o ||= {})), d = Math.hypot(o.x - car.x, o.z - car.z), m = this.tm[k]; m.visible = d < 170; if (!m.visible) return; lodCar(m, d > 26); m.position.set(o.x, o.y + drawnAt(this.net, o.x, o.z, o.y) - 0.004, o.z); m.rotation.set(-Math.atan(o.slope || 0), o.yaw, 0, 'YXZ'); if (d < 60) animateCar(m, o, Math.min(0.1, (now - (this.was || now)) / 1000) || 0.016, this.night || 0); if (d < 6) this.near.push(o); }); this.was = now;
   }
   dispose() { if (this.crowd) this.crowd.dispose(); this.g.traverse((o) => o.isInstancedMesh && o.dispose()); this.scene.remove(this.g); for (const d of this.disposables) for (const x of [].concat(d)) { if (x.map) x.map.dispose(); if (x.dispose) x.dispose(); } }
 }
@@ -80,7 +80,7 @@ export class CityView {
     seen.slice(0, 40).forEach(([d, v, o]) => {
       let m = this.pool.find((k) => k.v === v) || this.pool.find((k) => !k.v && k.kind === v.kind);
       if (!m) { m = { kind: v.kind, o: makeTrafficModel(v.kind) }; this.scene.add(m.o); this.pool.push(m); } m.v = v;
-      m.o.visible = true; m.o.position.set(o.x, o.y + drawnAt(this.net, o.x, o.z, o.y) - 0.004, o.z); m.o.rotation.set(-Math.atan(o.slope || 0), o.yaw, 0, 'YXZ'); if (d < 60) animateCar(m.o, o, Math.min(0.1, (now - (this.was || now)) / 1000) || 0.016, this.night || 0); if (d < 12) this.near.push(o);
+      m.o.visible = true; lodCar(m.o, d > 26); m.o.position.set(o.x, o.y + drawnAt(this.net, o.x, o.z, o.y) - 0.004, o.z); m.o.rotation.set(-Math.atan(o.slope || 0), o.yaw, 0, 'YXZ'); if (d < 60) animateCar(m.o, o, Math.min(0.1, (now - (this.was || now)) / 1000) || 0.016, this.night || 0); if (d < 12) this.near.push(o);
     });
     for (const m of this.pool) if (!m.v) m.o.visible = false; this.was = now;
   }

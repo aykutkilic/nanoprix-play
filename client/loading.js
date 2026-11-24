@@ -1,0 +1,52 @@
+// While the city comes: it is seen coming. An abstract map of İstanbul – a mosaic –
+// puts itself together out of what has really arrived: the land with the terrain,
+// the roads drawing themselves, the quarters lighting up with the houses, the
+// sights one by one, the ferries setting out. Each part has two halves: fetched
+// (faint) and built (bright).
+import { MINI as M } from './mini.js';
+import { t } from './i18n.js';
+// what is in which file, and which stage of the building makes it
+const PARTS = { land: [['terrain.bin', 'map.json'], 'terrain'], sea: [['ships.bin', 'ports.json'], 'sea'], city: [['city.bin'], 'city'], roads: [['roads.json', 'streets.json'], 'roads'], marks: [['landmarks.bin', 'landmarks.json'], 'landmarks'], ships: [['ports.json', 'ships.bin'], 'ships'], signs: [['streets.json'], 'signs'] };
+const ORDER = ['land', 'sea', 'city', 'roads', 'marks', 'ships', 'signs'], ease = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
+export class Loading {
+  constructor(host) {
+    this.got = {}; this.built = {}; this.show = {}; for (const k of ORDER) this.show[k] = { f: 0, b: 0 }; this.t0 = performance.now(); this.still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    host.innerHTML = `<div class="loading" role="progressbar" aria-valuemin="0" aria-valuemax="100"><canvas></canvas><div class="ttl"><h1>NANO<span>PRIX</span></h1><p class="what">${t('loading')}</p><p class="pct"></p><ul>${ORDER.map((k) => `<li data-k="${k}"><i></i>${t(`lp_${k}`)}</li>`).join('')}</ul></div></div>`; this.el = host.firstChild; this.cv = this.el.querySelector('canvas'); this.g = this.cv.getContext('2d'); this.what = this.el.querySelector('.what'); this.pct = this.el.querySelector('.pct'); this.li = Object.fromEntries([...this.el.querySelectorAll('li')].map((l) => [l.dataset.k, l]));
+    // each cell's turn: outward from the Golden Horn, a little at random
+    const cx = 960 / 2 / M.c, cz = 2480 / 2 / M.c; this.cells = []; let far = 0; for (let j = 0; j < M.h; j++) for (let i = 0; i < M.w; i++) { const ch = M.cells[j * M.w + i], d = Math.hypot(i - cx, j - cz); far = Math.max(far, d); this.cells.push({ i, j, ch, d, r: Math.abs(Math.sin(i * 12.9898 + j * 78.233) * 43758.5453) % 1 }); } for (const c of this.cells) c.at = (c.d / far) * 0.78 + c.r * 0.16;
+    this.roads = M.roads.map(([rank, p]) => { let l = 0; for (let k = 2; k < p.length; k += 2) l += Math.hypot(p[k] - p[k - 2], p[k + 1] - p[k - 1]); return { rank, p, l }; }); this.len = this.roads.reduce((s, r) => s + r.l, 0); let a = 0; for (const r of this.roads) { r.from = a / this.len; a += r.l; r.to = a / this.len; }
+    this.marks = M.marks.map(([x, z, h], k) => ({ x, z, h, at: (k / M.marks.length) * 0.94 }));
+    this.resize = () => this.size(); addEventListener('resize', this.resize); this.size(); this.tick = () => { if (this.gone) return; const n = performance.now(); if (n - (this.drawn || 0) > 30) { this.drawn = n; this.draw(); } requestAnimationFrame(this.tick); }; this.draw(); requestAnimationFrame(this.tick);
+  }
+  size() { const r = Math.min(2, devicePixelRatio || 1), w = innerWidth, h = innerHeight; this.cv.width = w * r; this.cv.height = h * r; this.r = r; const mw = M.w * M.c, mh = M.h * M.c, wide = w > h * 1.05; this.s = Math.min((h * (wide ? 0.94 : 0.74)) / mh, (w * (wide ? 0.54 : 0.94)) / mw); this.ox = wide ? w * 0.68 - (mw * this.s) / 2 : (w - mw * this.s) / 2; this.oy = wide ? (h - mh * this.s) / 2 : h * 0.22; this.el.classList.toggle('tall', !wide); }
+  // bytes of a file that have come
+  bytes(file, n) { this.got[file] = (this.got[file] || 0) + n; }
+  // a part of the world stands; resolves when it has been seen
+  stage(s) { for (const k of ORDER) if (PARTS[k][1] === s) this.built[k] = true; if (s === 'life') return null; this.now = s; return new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); }
+  fetched(k) { let g = 0, n = 0; for (const f of PARTS[k][0]) { const size = M.sizes[f] || 1; n += size; g += Math.min(size, this.got[f] || 0); } return n ? g / n : 1; }
+  get total() { let g = 0, n = 0; for (const f in M.sizes) if (Object.values(PARTS).some((p) => p[0].includes(f))) { n += M.sizes[f]; g += Math.min(M.sizes[f], this.got[f] || 0); } return (g / n) * 0.86 + (ORDER.filter((k) => this.built[k]).length / ORDER.length) * 0.14; }
+  draw() {
+    const g = this.g, now = performance.now(), T = (now - this.t0) / 1000, dt = Math.min(0.1, (now - (this.last || now)) / 1000); this.last = now; for (const k of ORDER) { const s = this.show[k], f = this.fetched(k), q = this.still ? 1 : Math.min(1, dt * 4.2); s.f += (f - s.f) * q; if (f - s.f < 0.004) s.f = f; const b = this.built[k] ? 1 : 0; s.b += (b - s.b) * q; if (b && b - s.b < 0.01) s.b = 1; }
+    for (const k of ORDER) { const s = this.show[k], v = Math.round(s.f * 60 + s.b * 40); if (this.li[k]._v !== v) { this.li[k]._v = v; this.li[k].firstChild.style.setProperty('--v', `${v}%`); this.li[k].classList.toggle('ok', v >= 100); } }
+    const S = this.show, cur = ORDER.find((k) => this.fetched(k) < 1) || ORDER.find((k) => !this.built[k]) || 'signs', p = Math.round(this.total * 100); if (this.p !== p || this.cur !== cur) { this.p = p; this.cur = cur; this.pct.textContent = `${p}%`; this.what.textContent = t(`ld_${cur}`); this.el.setAttribute('aria-valuenow', p); }
+    g.setTransform(this.r, 0, 0, this.r, 0, 0); g.clearRect(0, 0, innerWidth, innerHeight); g.translate(this.ox, this.oy); g.scale(this.s, this.s); const c = M.c, mw = M.w * c, mh = M.h * c;
+    // the sea: lines that move, once there is a shore
+    g.lineWidth = 1.1; g.strokeStyle = `rgba(92,168,196,${0.05 + 0.10 * S.sea.f + 0.12 * S.sea.b})`; g.beginPath(); for (let z = 6; z < mh; z += c * 2) { for (let x = 0; x <= mw; x += c) { const i = Math.floor(x / c), j = Math.floor(z / c), sea = M.cells[j * M.w + Math.min(M.w - 1, i)]; const y = z + Math.sin(x * 0.055 + z * 0.03 + (this.still ? 0 : T * 1.4)) * 2.6; if (sea === '.' || sea === ',') { if (this.pen) g.lineTo(x, y); else g.moveTo(x, y); this.pen = true; } else this.pen = false; } this.pen = false; } g.stroke();
+    // the mosaic
+    this.fs = -1;
+    const LAND = { '.': [30, 108, 148], ',': [62, 156, 172], a: [92, 118, 74], b: [108, 126, 78], c: [126, 136, 88], d: [146, 146, 104], A: [162, 138, 106], B: [182, 148, 108], C: [200, 156, 108], D: [216, 160, 104], E: [232, 164, 98] };
+    for (const q of this.cells) {
+      const k = ease((S.land.f * 1.12 - q.at) / 0.14) * (q.ch === '.' ? 0.35 + 0.65 * S.sea.f : 1); if (k <= 0) continue; const town = q.ch >= 'A' && q.ch <= 'E', lit = town ? ease((S.city.f * 1.1 - q.at) / 0.12) : 1, sea = q.ch === '.' || q.ch === ',', base = town ? [98, 112, 76] : LAND[q.ch], tone = LAND[q.ch], up = S.land.b * 0.18 + (town ? S.city.b * 0.16 : 0), m = (a, b) => Math.round(Math.min(255, (a + (b - a) * lit) * (0.72 + up + (town && lit > 0 && lit < 1 ? 0.5 * (1 - lit) : 0)))), z = (sea ? 0.62 + (this.still ? 0 : 0.10 * Math.sin(T * 1.6 + q.i * 0.5 + q.j * 0.34)) * S.sea.f : 0.88) * k * c, o = (c - z) / 2, tw = town && S.city.b > 0 && !this.still ? 0.06 * Math.sin(T * 2.2 + q.r * 40) : 0;
+      const R = m(base[0], tone[0]) >> 2, Gc = m(base[1], tone[1]) >> 2, Bc = m(base[2], tone[2]) >> 2, key = (R << 12) | (Gc << 6) | Bc; if (key !== this.fs) { this.fs = key; g.fillStyle = (this.cols ||= new Map()).get(key) || (this.cols.set(key, `rgb(${R << 2},${Gc << 2},${Bc << 2})`), this.cols.get(key)); } g.globalAlpha = Math.min(1, (q.ch === '.' ? 0.8 : q.ch === ',' ? 0.9 : 1) * k + tw); g.fillRect(q.i * c + o, q.j * c + o - (1 - k) * 6, z, z);
+    } g.globalAlpha = 1;
+    // the roads draw themselves
+    g.lineCap = g.lineJoin = 'round'; for (const [pass, reach] of [[0, S.roads.f], [1, S.roads.f * 0.55 + S.roads.b * 0.45]]) for (const r of this.roads) { const k = Math.min(1, (reach * 1.02 - r.from) / Math.max(1e-4, r.to - r.from)); if (k <= 0) continue; g.beginPath(); let left = r.l * k; g.moveTo(r.p[0], r.p[1]); let hx = r.p[0], hz = r.p[1]; for (let i = 2; i < r.p.length && left > 0; i += 2) { const dx = r.p[i] - r.p[i - 2], dz = r.p[i + 1] - r.p[i - 1], l = Math.hypot(dx, dz) || 1, f = Math.min(1, left / l); hx = r.p[i - 2] + dx * f; hz = r.p[i - 1] + dz * f; g.lineTo(hx, hz); left -= l; } g.strokeStyle = pass ? (r.rank === 2 ? '#ffd75a' : r.rank ? 'rgba(255,215,90,.85)' : 'rgba(255,215,90,.6)') : r.rank === 2 ? 'rgba(60,36,14,.9)' : 'rgba(60,36,14,.62)'; g.lineWidth = (r.rank === 2 ? 5.4 : r.rank ? 3.6 : 2.4) * (pass ? 0.62 : 1.15); g.stroke(); if (pass && k < 1) { g.fillStyle = '#fff3c4'; g.beginPath(); g.arc(hx, hz, 4.4, 0, 7); g.fill(); } }
+    // the ferries set out
+    if (S.ships.f > 0.02) { g.setLineDash([4, 6]); g.lineWidth = 1.4; g.strokeStyle = `rgba(190,226,236,${0.16 * S.ships.f + 0.2 * S.ships.b})`; g.beginPath(); for (const f of M.ferries) { g.moveTo(f[0], f[1]); for (let i = 2; i < f.length; i += 2) g.lineTo(f[i], f[i + 1]); } g.stroke(); g.setLineDash([]); g.fillStyle = '#f4f1e8'; if (S.ships.f > 0.5) M.ferries.forEach((f, k) => { const n = f.length / 2 - 1, u0 = ((this.still ? 0.4 : T * (0.05 + (k % 5) * 0.012)) + k * 0.37) % 2, u = (u0 < 1 ? u0 : 2 - u0) * n, i = Math.min(n - 1, Math.floor(u)), e = u - i; g.globalAlpha = 0.35 + 0.65 * S.ships.b; g.beginPath(); g.arc(f[i * 2] + (f[i * 2 + 2] - f[i * 2]) * e, f[i * 2 + 1] + (f[i * 2 + 3] - f[i * 2 + 1]) * e, 3, 0, 7); g.fill(); }); g.globalAlpha = 1; }
+    // the sights, one by one
+    for (const m of this.marks) { const k = ease((S.marks.f - m.at) / 0.05); if (k <= 0) continue; const ring = !this.still && k < 1 ? 1 - k : 0, r = (m.h ? 5.4 : 2.5) * (0.6 + 0.4 * k + 0.5 * ring); if (ring) { g.strokeStyle = `rgba(255,240,190,${ring * 0.8})`; g.lineWidth = 1.6; g.beginPath(); g.arc(m.x, m.z, 4 + k * 16, 0, 7); g.stroke(); } g.fillStyle = m.h ? '#fff3cf' : '#ffe08a'; g.globalAlpha = (m.h ? 0.85 : 0.6) + 0.15 * S.marks.b; g.beginPath(); g.moveTo(m.x, m.z - r * 1.35); g.lineTo(m.x + r, m.z); g.lineTo(m.x, m.z + r * 1.35); g.lineTo(m.x - r, m.z); g.fill(); g.globalAlpha = 1; }
+  }
+  fail(msg) { this.gone = true; this.what.textContent = msg; this.el.classList.add('failed'); }
+  // away: the map comes towards one
+  async done() { for (const k of ORDER) this.built[k] = true; await new Promise((r) => setTimeout(r, this.still ? 0 : 420)); const l = this.el; document.body.appendChild(l); l.classList.add('out'); setTimeout(() => { this.gone = true; removeEventListener('resize', this.resize); l.remove(); }, 800); }
+}

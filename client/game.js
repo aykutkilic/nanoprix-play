@@ -13,7 +13,7 @@ import { RaceStats } from '../shared/stats.js';
 import { tower, sectors, board, gapChart, MODES } from './statsview.js';
 import { weatherAt, gust, mixWeather, WEATHER } from '../shared/weather.js';
 import { encodePose } from '../shared/protocol.js';
-import { makeCarModel, animateCar, setHeadlights } from './carmodels.js';
+import { makeCarModel, animateCar, setHeadlights, lodCar } from './carmodels.js';
 import { CourseView, CityView } from './courseview.js';
 import { Cruiser, cityTraffic } from '../shared/cruise.js';
 import { t } from './i18n.js';
@@ -40,6 +40,7 @@ export class Game {
     this.clear(); this.link = link; this.msg = msg; this.myId = myId; this.settings = msg.settings; this.free = msg.settings.mode === 'cruise'; this.override = null; this.wx = msg.wx || { to: msg.settings.weather || 'clear', from: null, at: 0 };
     const def = COURSES.find((c) => c.id === msg.settings.course), course = (this.course = this.free ? null : new Course(this.net, def, msg.settings.reverse));
     if (this.free) { this.simits = []; this.traffic = []; this.cv = new CityView(this.view.scene, cityTraffic(this.net, msg.seed, msg.settings.traffic), this.net); this.pilot = new Cruiser(this.net); this.auto1 = false; } else { this.simits = makeSimits(course, msg.seed); this.traffic = makeTraffic(course, msg.seed, msg.settings.traffic); this.cv = new CourseView(this.view.scene, this.net, course, this.simits, this.traffic, this.view.world); }
+    this.view.warm();
     this.stats = this.free ? null : new RaceStats(course.len, msg.settings.laps, msg.cars); this.seen = 0; this.full = false; this.aboard = null; this.ferryOff = null; this.ferryNote = '';
     for (const o of msg.cars) this.enter(o);
     this.mine = this.cars.get(myId) || null; this.me = this.mine ? this.mine.st : null;
@@ -123,7 +124,7 @@ export class Game {
     }
     for (const o of others) { this.marks(o.st, o.id % 997, dt); if (o.st.boosting && Math.random() < 0.6) this.fx.flame(o.st); if (o.st.horn && now - (o.hornAt || 0) > 340) { o.hornAt = now; if (me) this.audio.horn(0.18 / (1 + Math.hypot(o.st.x - me.x, o.st.z - me.z) / 6)); } }
     // models
-    for (const c of this.cars.values()) { const s = c.st; c.model.position.set(s.x, s.y + drawnAt(this.net, s.x, s.z, s.y) - 0.004, s.z); if (c.model.userData.contact) { const h = s.air > 0 ? Math.min(1, s.air * 2) : 0; c.model.userData.contact.material.opacity = 0.85 * (1 - h); } c.model.rotation.set(-Math.atan(s.slope || this.slopeOf(s)) * 0.95, s.yaw, 0, 'YXZ'); animateCar(c.model, s, dt, V.night); c.model.visible = c.mine || c.buf.length > 0 || T < 1; }
+    const eye = V.camera === V.ortho ? null : V.camera.position; for (const c of this.cars.values()) { const s = c.st; lodCar(c.model, eye ? (s.x - eye.x) ** 2 + (s.y - eye.y) ** 2 + (s.z - eye.z) ** 2 > 900 : false); c.model.position.set(s.x, s.y + drawnAt(this.net, s.x, s.z, s.y) - 0.004, s.z); if (c.model.userData.contact) { const h = s.air > 0 ? Math.min(1, s.air * 2) : 0; c.model.userData.contact.material.opacity = 0.85 * (1 - h); } c.model.rotation.set(-Math.atan(s.slope || this.slopeOf(s)) * 0.95, s.yaw, 0, 'YXZ'); animateCar(c.model, s, dt, V.night); c.model.visible = c.mine || c.buf.length > 0 || T < 1; }
     // light of the day
     const day = this.free ? 420 : 150, L = this.override !== null ? this.override : this.settings.light === 'night' ? 1 : this.settings.light === 'cycle' ? Math.min(1, Math.max(0, 0.5 - 0.85 * Math.cos(((T + 20) / day) * Math.PI * 2))) : 0;
     if (Math.abs(V.night - L) > 0.001) V.applyNight(Math.abs(L - V.night) < dt * 0.7 ? L : V.night + Math.sign(L - V.night) * dt * 0.7); setHeadlights(V.night);

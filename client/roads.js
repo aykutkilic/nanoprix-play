@@ -5,7 +5,7 @@ import * as THREE from './vendor/three.module.min.js';
 import { noiseTexture } from './realism.js';
 import { surf, weathered, cutAway, NONE } from './weather.js';
 import { buildTube } from './tube.js';
-import { pack } from './gpu.js';
+import { pack, Batch, merge, normals } from './gpu.js';
 
 // how far above its line a road is drawn (so that none flickers through another)
 export const lift = (r) => (r.spur ? -0.003 : 0.004) + RANK[r.style] * 0.007 + (r.index % 5) * 0.0012;
@@ -78,7 +78,7 @@ export function buildRoads(W) {
     return pts;
   };
   const COLS = (r) => [r.style === 'motorway' ? RAIL : r.style === 'shore' ? SHORE : CONC, r.style === 'motorway' ? RAIL : CONC, CONC, PAVE, SIDE, SIDE];
-  const finish = (K) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(K.pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(K.col, 3)); g.setIndex(K.idx); g.computeVertexNormals(); pack(g); const m = new THREE.Mesh(g, kerb); m.castShadow = true; m.receiveShadow = true; m.matrixAutoUpdate = false; root.add(m); W.keeper.add(m, 1.35); };
+  const batch = new Batch(), finish = (K) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(K.pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(K.col, 3)); g.setIndex(K.idx); normals(g); batch.add(pack(g), kerb, 1.35); };
   kerb.side = THREE.DoubleSide; weathered(kerb, { snow: 0.9, wet: 0.35, shine: 0.4 });
   for (const r of net.roads) {
     const up = lift(r), LAT = [-1, -0.4, 0.4, 1], PIECE = 48, A = net.hubs.get(r.a), B = net.hubs.get(r.b);
@@ -93,9 +93,9 @@ export function buildRoads(W) {
         for (const u of LAT) { const px = x - dz * u * r.hw, pz = z + dx * u * r.hw; pos.push(px, hAt(px, pz, y) + up, pz); road.push(u * r.hw, r.s[i], r.hw, RANK[r.style]); hub.push(dh); }
         if (i < i1) { const q = (i - i0) * 4; for (let k = 0; k < 3; k++) idx.push(q + k, q + k + 1, q + k + 4, q + k + 1, q + k + 5, q + k + 4); }
       }
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aRoad', new THREE.Float32BufferAttribute(road, 4)); g.setAttribute('aHub', new THREE.Float32BufferAttribute(hub, 1)); g.setIndex(idx); g.computeVertexNormals();
-      if (g.attributes.normal.getY(0) < 0) { for (let k = 0; k < idx.length; k += 3) { const t = idx[k]; idx[k] = idx[k + 1]; idx[k + 1] = t; } g.setIndex(idx); g.computeVertexNormals(); }
-      pack(g); const m = new THREE.Mesh(g, tube ? inside : asphalt); m.receiveShadow = true; m.castShadow = true; m.matrixAutoUpdate = false; root.add(m); W.keeper.add(m, 1.6);
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aRoad', new THREE.Float32BufferAttribute(road, 4)); g.setAttribute('aHub', new THREE.Float32BufferAttribute(hub, 1)); g.setIndex(idx); normals(g);
+      if (g.attributes.normal.getY(0) < 0) { for (let k = 0; k < idx.length; k += 3) { const t = idx[k]; idx[k] = idx[k + 1]; idx[k + 1] = t; } g.setIndex(idx); normals(g); }
+      batch.add(pack(g), tube ? inside : asphalt, 1.6);
       edges.forEach((E, e) => { for (let i = i0; i < i1; i++) { const a = E[i], b = E[i + 1]; if (!a.free || !b.free) continue; const pa = profile(a.p, a.nx, a.nz, a.y + up, r, e, a.bridge && b.bridge), pb = profile(b.p, b.nx, b.nz, b.y + up, r, e, a.bridge && b.bridge), C = COLS(r); for (let k = 0; k + 1 < pa.length; k++) strip(K, [pa[k], pa[k + 1]], [pb[k], pb[k + 1]], C[Math.min(k, C.length - 1)]); } });
       if (K.idx.length) finish(K);
     }
@@ -104,29 +104,29 @@ export function buildRoads(W) {
     if (r.id !== 'bogaz' && r.id !== 'fsm' && r.id !== 'yss') for (let i = 4; i < r.n - 4; i += 5) if (r.bridge[i]) { const [x, z, y, dx, dz] = F[i], gy = Math.max(-1.4, height(x, z)); if (y - gy > 0.9) { let under = false; net.around(x, z, (o, j, t, d, h) => { if (o !== r && d < o.hw + 0.4 && h < y - 0.6) under = true; }); if (!under) piers.push([x, gy - 0.2, z, r.hw, y - 0.3 - gy + 0.2, Math.atan2(dx, dz)]); } }
   }
   for (const r of net.roads) if (r.tunnel) buildTube(W, r, lift);
-  const capK = makeKerb();
   // ------------------------------------------------------------ junctions
   for (const d of net.discs) {
     const pos = [], road = [], hub = [], idx = [], RINGS = d.hub ? 4 : 2, SEG = d.hub ? 36 : 16, up = d.hub ? 0.04 : 0.02;
     const y0 = (x, z) => { const q = net.at(x, z, d.h + 0.3, null, out); return q && Math.abs(q.h - d.h) < 0.9 ? q.h : d.h; };
     for (let a = 0; a <= RINGS; a++) for (let b = 0; b < SEG; b++) { const R = (a / RINGS) * d.r, t = (b / SEG) * Math.PI * 2, x = d.x + Math.sin(t) * R, z = d.z + Math.cos(t) * R; pos.push(x, y0(x, z) + up - 0.036 * Math.max(0, a / RINGS - 0.85) / 0.15, z); road.push(1.1, 5, 3, 3); hub.push(-1); if (a < RINGS) { const q = a * SEG + b, n = a * SEG + ((b + 1) % SEG); idx.push(q, q + SEG, n, n, q + SEG, n + SEG); } }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aRoad', new THREE.Float32BufferAttribute(road, 4)); g.setAttribute('aHub', new THREE.Float32BufferAttribute(hub, 1)); g.setIndex(idx); g.computeVertexNormals();
-    pack(g); const m = new THREE.Mesh(g, asphalt); m.receiveShadow = true; root.add(m); W.keeper.add(m, 1.35);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aRoad', new THREE.Float32BufferAttribute(road, 4)); g.setAttribute('aHub', new THREE.Float32BufferAttribute(hub, 1)); g.setIndex(idx); normals(g);
+    batch.add(pack(g), asphalt, 1.6, false);
 
-    const K = d.hub ? makeKerb() : capK, fake = { style: 'avenue', hw: 2 };
+    const K = makeKerb(), fake = { style: 'avenue', hw: 2 };
     const E = Array.from({ length: 49 }, (_, k) => { const t = (k / 48) * Math.PI * 2, nx = Math.sin(t), nz = Math.cos(t), x = d.x + nx * d.r, z = d.z + nz * d.r; let on = false; net.around(x, z, (r, i, tt, D, h) => { if (D < r.hw - 0.02 && Math.abs(h - d.h) < 0.9) on = true; }); return { p: [x, z], nx, nz, y: y0(x, z), free: !on }; });
     for (let k = 0; k < 48; k++) { const a = E[k], b = E[k + 1]; if (!a.free || !b.free) continue; const pa = profile(a.p, a.nx, a.nz, a.y, fake, 0, false), pb = profile(b.p, b.nx, b.nz, b.y, fake, 0, false), C = COLS(fake); for (let q = 0; q + 1 < pa.length; q++) strip(K, [pa[q], pa[q + 1]], [pb[q], pb[q + 1]], C[q]); }
-    if (d.hub && K.idx.length) finish(K);
+    if (K.idx.length) finish(K);
   }
-  if (capK.idx.length) finish(capK);
+  batch.flush(W);
   // ------------------------------------------------------------ lamps and piers
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), UP = V(0, 1, 0);
   const inst = (geo, mat, list, put, cast = true) => { if (!list.length) return null; const m = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((o, k) => { put(o); m.setMatrixAt(k, M); }); m.castShadow = cast; m.receiveShadow = true; m.frustumCulled = false; root.add(m); return m; };
   const pole = W.mat('#2b3033', { metalness: 0.6, roughness: 0.5 }), bulb = W.lit(W.mat('#f3ead6', { roughness: 0.4 }), '#ffb05a', 7);
+  const post = merge([new THREE.CylinderGeometry(0.022, 0.035, 1.25, 5).translate(0, 0.62, 0), new THREE.BoxGeometry(0.03, 0.03, 0.5).translate(0, 1.25, 0.22)]);
   const tiles = new Map(); for (const l of lamps) { const k = Math.floor(l[0] / 200) * 999 + Math.floor(l[2] / 200); if (!tiles.has(k)) tiles.set(k, []); tiles.get(k).push(l); if (coast(l[0], l[2]) < 5) W.light(l[0], l[2], 1.0, 1); }
   for (const L of tiles.values()) {
     const put = (dx, dy) => ([x, y, z, a]) => { M.compose(V(x + Math.sin(a) * dx, y + dy, z + Math.cos(a) * dx), Q.setFromAxisAngle(UP, a), V(1, 1, 1)); };
-    for (const m of [inst(new THREE.CylinderGeometry(0.022, 0.035, 1.25, 5).translate(0, 0.62, 0), pole, L, put(0, 0)), inst(new THREE.BoxGeometry(0.03, 0.03, 0.5).translate(0, 1.25, 0.22), pole, L, put(0, 0), false), inst(new THREE.BoxGeometry(0.09, 0.05, 0.2), bulb, L, put(0.42, 1.22), false)]) if (m) { m.frustumCulled = true; m.computeBoundingSphere(); }
+    for (const m of [inst(post, pole, L, put(0, 0)), inst(new THREE.BoxGeometry(0.09, 0.05, 0.2), bulb, L, put(0.42, 1.22), false)]) if (m) { m.frustumCulled = true; m.computeBoundingSphere(); m.boundingSphere && W.keeper.parts.push({ o: m, x: m.boundingSphere.center.x, z: m.boundingSphere.center.z, r: m.boundingSphere.radius, reach: 0.8, max: 1e9, off: 0, held: false }); }
   }
   inst(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), W.mat('#9a948a', { roughness: 0.9 }), piers, ([x, y, z, hw, h, a]) => M.compose(V(x, y, z), Q.setFromAxisAngle(UP, a), V(hw * 1.1, h, 0.7)));
   W.lampCount = lamps.length;

@@ -10,7 +10,7 @@ import { buildMarks } from './marks.js';
 import { buildBuildings } from './buildings.js';
 import { buildLife } from './life.js';
 import { buildShips } from './ships.js';
-import { pack, Keeper } from './gpu.js';
+import { pack, Keeper, Still, merge } from './gpu.js';
 import { buildSigns } from './signs.js';
 import { buildSignals } from './signals.js';
 
@@ -18,10 +18,10 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z), UP = V(0, 1, 0);
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 export const CHUNK = 64; // grid cells across a piece of ground
 
-export function buildWorld(scene, A, net, onStage = () => {}) {
-  const root = new THREE.Group(); scene.add(root);
+export async function buildWorld(scene, A, net, onStage = () => {}) {
+  const root = new THREE.Group(), still = new Still(); scene.add(root); root.add(still);
   const g = A.map.grid, M0 = A.map.map, { height, coast } = A.ground;
-  const night = { value: 0 }, time = { value: 0 }, W = { keeper: new Keeper(), mouths: { value: [0, 1].map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, glow: [], spots: [], updates: [], A };
+  const night = { value: 0 }, time = { value: 0 }, W = { keeper: new Keeper(), still, mouths: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, glow: [], spots: [], updates: [], A };
   W.lit = (m, color, k) => { m.emissive = new THREE.Color(color); m.emissiveIntensity = 0; W.glow.push([m, k]); return m; };
   W.mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, ...o });
   W.spot = (x, y, z, color, power, reach) => { const l = new THREE.PointLight(color, 0, reach, 1.6); l.position.set(x, y, z); root.add(l); W.spots.push([l, power]); return l; };
@@ -39,9 +39,9 @@ export function buildWorld(scene, A, net, onStage = () => {}) {
   ground.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, { uNight: night, uNoise: { value: noiseTexture() }, uShore: { value: shoreTex }, uPark: { value: parkTex }, uUrban: { value: urbanTex }, uArea: { value: area }, uMouth: W.mouths });
     s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vW; varying float vUpN;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvW = position; vUpN = normal.y;');
-    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uMouth[2];\nuniform sampler2D uNoise, uShore, uPark, uUrban; uniform vec4 uArea; uniform float uNight; varying vec3 vW; varying float vUpN; float gBump; float gUrban;')
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uMouth[4];\nuniform sampler2D uNoise, uShore, uPark, uUrban; uniform vec4 uArea; uniform float uNight; varying vec3 vW; varying float vUpN; float gBump; float gUrban;')
       .replace('#include <map_fragment>', `
-        for (int k = 0; k < 2; k++) { vec2 md = vW.xz - uMouth[k].xy; float al = dot(md, uMouth[k].zw), la = abs(dot(md, vec2(-uMouth[k].w, uMouth[k].z))); if (al > -1.2 && al < 13.0 && la < 2.5) discard; } // (the mouths of the tunnel)
+        for (int k = 0; k < 4; k++) { vec2 md = vW.xz - uMouth[k].xy; float al = dot(md, uMouth[k].zw), la = abs(dot(md, vec2(-uMouth[k].w, uMouth[k].z))); if (al > -1.2 && al < 13.0 && la < 2.5) discard; } // (the mouths of the tunnel)
         vec2 auv = (vW.xz - uArea.xy) / uArea.zw;
         vec2 tp = vW.xz + vW.y * vec2(1.3, 0.8);
         vec4 n0 = texture2D(uNoise, tp * 0.006), n1 = texture2D(uNoise, tp * 0.026), n2 = texture2D(uNoise, tp * 0.12), n3 = texture2D(uNoise, tp * 0.55);
@@ -84,14 +84,17 @@ export function buildWorld(scene, A, net, onStage = () => {}) {
     pieces.push({ ci, cj, x: g.x0 + (ci + 0.5) * CHUNK * g.step, z: g.z0 + (cj + 0.5) * CHUNK * g.step, lods: {}, now: null });
   }
   // (all of it coarse, once; the rest when the camera gets there)
-  for (const p of pieces) { p.lods[4] = makePiece(p.ci, p.cj, 4); root.add(p.lods[4]); p.now = 4; }
+  for (const p of pieces) { p.lods[4] = makePiece(p.ci, p.cj, 4); still.add(p.lods[4]); p.now = 4; }
+  // sixteen together where all of them are far
+  const supers = new Map(); for (const p of pieces) { const k = `${p.ci >> 2},${p.cj >> 2}`; if (!supers.has(k)) supers.set(k, { list: [] }); supers.get(k).list.push(p); } for (const s of supers.values()) { s.o = new THREE.Mesh(merge(s.list.map((p) => p.lods[4].geometry)), ground); s.o.geometry.computeBoundingSphere(); s.o.receiveShadow = true; s.o.visible = false; still.add(s.o); s.on = false; }
   W.updateGround = (cam, budget = 2) => { const now = performance.now();
     for (const p of pieces) {
       const d = Math.max(Math.abs(p.x - cam.x), Math.abs(p.z - cam.z)) - CHUNK * g.step / 2, want = d < 60 ? 1 : d < 190 ? 2 : 4;
       if (want === p.now) { if (p.old && now - p.oldAt > 9000) { p.old.geometry.dispose(); p.old = null; } continue; }
-      if (!p.lods[want]) { if (budget-- <= 0) continue; p.lods[want] = makePiece(p.ci, p.cj, want); root.add(p.lods[want]); }
+      if (!p.lods[want]) { if (budget-- <= 0) continue; p.lods[want] = makePiece(p.ci, p.cj, want); still.add(p.lods[want]); }
       p.lods[p.now].visible = false; p.old = p.lods[p.now]; p.oldAt = now; p.lods[want].visible = true; p.now = want;
     }
+    for (const s of supers.values()) { let on = true; for (const p of s.list) if (p.now !== 4) { on = false; break; } if (on !== s.on) { s.on = on; s.o.visible = on; for (const p of s.list) p.lods[p.now].visible = !on; } else if (on) for (const p of s.list) p.lods[4].visible = false; }
   };
   // the slab the diorama stands on
   { const x0 = g.x0, z0 = g.z0, x1 = g.x0 + (g.w - 1) * g.step, z1 = g.z0 + (g.h - 1) * g.step, pos = [], idx = [], col = [];
@@ -103,7 +106,7 @@ export function buildWorld(scene, A, net, onStage = () => {}) {
     const wood = W.mat('#4a3020', { roughness: 0.55 }), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, lx = x1 - x0 + 24, lz = z1 - z0 + 24;
     for (const [x, z, w, d] of [[cx, z0 - 6, lx, 12], [cx, z1 + 6, lx, 12], [x0 - 6, cz, 12, lz - 24], [x1 + 6, cz, 12, lz - 24]]) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 6, d), wood); m.position.set(x, -4.4, z); root.add(m); }
   }
-  onStage('terrain');
+  await onStage('terrain');
 
   // ------------------------------------------------------------ the sea
   const LD = 2048, ld = new Uint8Array(LD * LD);
@@ -182,7 +185,7 @@ export function buildWorld(scene, A, net, onStage = () => {}) {
   const sgeo = new THREE.BufferGeometry(); sgeo.setAttribute('position', new THREE.BufferAttribute(sp, 3)); sgeo.setAttribute('normal', new THREE.BufferAttribute(Float32Array.from(sp, (_, k) => (k % 3 === 1 ? 1 : 0)), 3)); sgeo.setIndex(si);
   const water = new THREE.Mesh(sgeo, sea); water.frustumCulled = false; water.position.y = -0.02; water.receiveShadow = true; root.add(water);
   W.updates.push((dt, now, cam) => { water.position.x = Math.round(cam.x); water.position.z = Math.round(cam.z); }); void ww; void wh;
-  onStage('sea');
+  await onStage('sea');
 
   // ------------------------------------------------------------ the city (buildings.js), and its trees in tiles
   const R = rng(11), M = new THREE.Matrix4(), Q = new THREE.Quaternion(), tint = new THREE.Color();
@@ -196,20 +199,20 @@ export function buildWorld(scene, A, net, onStage = () => {}) {
   const inst = (geo, mat, list, fn, grp, cast = true) => { if (!list.length) return; const m = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((o, k) => fn(m, o, k)); m.castShadow = cast; m.receiveShadow = true; m.computeBoundingSphere(); grp.add(m); return m; };
   const tileList = [];
   for (const t of tiles.values()) {
-    const grp = new THREE.Group(); root.add(grp); t.grp = grp; tileList.push(t);
-    t.leaf = [inst(crown, leaf, t.trees, (m, [x, y, z, s], k) => { M.compose(V(x, y, z), Q.setFromAxisAngle(UP, R() * 6), V(s, s * (0.85 + R() * 0.4), s)); m.setMatrixAt(k, M); m.setColorAt(k, tint.setHSL(0.22 + R() * 0.07, 0.3 + R() * 0.22, 0.14 + R() * 0.11)); }, grp), inst(cyp, leaf, t.cyp, (m, [x, y, z, s], k) => { M.compose(V(x, y, z), Q.identity(), V(s, s, s)); m.setMatrixAt(k, M); m.setColorAt(k, tint.setHSL(0.3, 0.26, 0.1 + R() * 0.05)); }, grp)].filter(Boolean);
+    const grp = new THREE.Group(); t.grp = grp; tileList.push(t);
+    t.leaf = [inst(crown, leaf, t.trees, (m, [x, y, z, s], k) => { M.compose(V(x, y, z), Q.setFromAxisAngle(UP, R() * 6), V(s, s * (0.85 + R() * 0.4), s)); m.setMatrixAt(k, M); m.setColorAt(k, tint.setHSL(0.22 + R() * 0.07, 0.3 + R() * 0.22, 0.14 + R() * 0.11)); }, grp), inst(cyp, leaf, t.cyp, (m, [x, y, z, s], k) => { M.compose(V(x, y, z), Q.identity(), V(s, s, s)); m.setMatrixAt(k, M); m.setColorAt(k, tint.setHSL(0.3, 0.26, 0.1 + R() * 0.05)); }, grp)].filter(Boolean); still.add(grp);
   }
   W.updateTiles = (cam, far) => { for (const t of tileList) { const d = Math.hypot(t.x - cam.x, t.z - cam.z) - TILE * 0.71; t.grp.visible = d < far; for (const m of t.leaf) m.visible = d < far * 0.6; } };
-  onStage('city');
+  await onStage('city');
 
-  buildRoads(W); onStage('roads');
-  buildMarks(W); onStage('landmarks');
-  buildLife(W); onStage('life'); buildShips(W, A); onStage('ships');
-  buildSigns(W); buildSignals(W); onStage('signs');
+  buildRoads(W); await onStage('roads');
+  buildMarks(W); await onStage('landmarks');
+  buildLife(W); await onStage('life'); buildShips(W, A); await onStage('ships');
+  buildSigns(W); buildSignals(W); await onStage('signs');
   lampTex.needsUpdate = true;
 
   W.setNight = (k) => { night.value = k; for (const [m, x] of W.glow) m.emissiveIntensity = k * x; for (const [l, x] of W.spots) l.intensity = k * x; };
-  W.update = (dt, now, cam, far) => { time.value = now / 1000; W.updateGround(cam); W.keeper.update(now, cam, far); W.updateTiles(cam, far); W.updateBuildings(cam, far); for (const u of W.updates) u(dt, now, cam, far); };
+  W.update = (dt, now, cam, far) => { time.value = now / 1000; W.updateGround(cam); W.keeper.update(now, cam, far); W.updateMarks(cam, far); W.updateTiles(cam, far); W.updateBuildings(cam, far); for (const u of W.updates) u(dt, now, cam, far); };
   W.bounds = M0;
   return W;
 }

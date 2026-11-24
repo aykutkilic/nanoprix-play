@@ -35,6 +35,8 @@ export class Cruiser {
   pick(r, dir, want) {
     const ex = this.exits(r, dir); if (!ex.length) return { r, dir: -dir, a: Math.PI, uturn: true };
     const score = (e) => (want === 0 ? Math.abs(e.a) - (e.r.style === r.style ? 0.25 : 0) : Math.abs(e.a - want * 1.1) + (Math.sign(e.a) === want ? 0 : 0.5));
+    // (asked to turn: the road that runs straight on is not a turn, if there is another that way)
+    if (want) { const on = ex.reduce((p, q) => (Math.abs(q.a) < Math.abs(p.a) ? q : p)), side = ex.filter((e) => e !== on && Math.sign(e.a) === want); if (side.length) return side.sort((a, b) => score(a) - score(b))[0]; }
     return ex.sort((a, b) => score(a) - score(b))[0];
   }
   // a side street to turn into, the way asked, before the next junction

@@ -88,6 +88,8 @@ function collide(car, net, only, dt) {
     car.wallT = 0.12;
     const again = net.at(car.x, car.z, car.y, only, tmp); if (again) q = again;
   }
+  { const s = net.island(car.x, car.z, car.y, margin); if (s) { // against a metrobüs platform: along it
+    const [k, , v, w] = s, sd = v < 0 ? -1 : 1, nx = -k.dz * sd, nz = k.dx * sd, push = Math.min(w - Math.abs(v), 0.12); car.x += nx * push; car.z += nz * push; const vn = car.vx * nx + car.vz * nz; if (vn < 0) { const hard = Math.min(1, -vn / 9); car.vx -= nx * vn * 1.2; car.vz -= nz * vn * 1.2; if (hard > 0.08) car.hit = Math.max(car.hit, hard); } car.wallT = 0.12; } }
   car.wallT = Math.max(0, car.wallT - dt);
   const h = q.h;
   // the surface: follow it, fly off a crest

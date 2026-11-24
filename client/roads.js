@@ -29,16 +29,17 @@ export function buildRoads(W) {
       .replace('#include <map_fragment>', `
         vec4 n1 = texture2D(uNoise, vW.xz * 0.05), n2 = texture2D(uNoise, vW.xz * 0.9);
         vec3 c = mix(vec3(0.070, 0.072, 0.078), vec3(0.105, 0.102, 0.098), n1.r) * (0.80 + n2.b * 0.42);
-        float u = vRoad.x, hw = vRoad.z, mw = step(2.5, vRoad.w), lanes = mw > 0.5 ? 3.0 : vRoad.w > 1.5 ? 2.0 : vRoad.w > 0.5 ? 2.0 : 1.0;
-        float lw = (hw - 0.2) / lanes, a = abs(u), dash = smoothstep(0.02, 0.0, abs(fract(vRoad.y / 2.4) - 0.5) - 0.25);
+        float bz = step(3.5, vRoad.w), b0 = 0.85 * bz, u = vRoad.x, hw = vRoad.z, mw = step(2.5, vRoad.w), lanes = bz > 0.5 ? 2.0 : mw > 0.5 ? 3.0 : vRoad.w > 1.5 ? 2.0 : vRoad.w > 0.5 ? 2.0 : 1.0;
+        float lw = max(0.3, (hw - 0.2 - b0) / lanes), a = abs(u), dash = smoothstep(0.02, 0.0, abs(fract(vRoad.y / 2.4) - 0.5) - 0.25);
         // worn wheel tracks
+        c = mix(c, vec3(0.235, 0.052, 0.040) * (0.72 + n2.b * 0.5), bz * smoothstep(0.87, 0.85, a) * 0.8 * smoothstep(0.0, 0.8, vHub)); // (the metrobüs' lanes)
         c *= 1.0 - 0.10 * exp(-pow((mod(a, lw) - lw * 0.5) / (lw * 0.26), 2.0)) * n1.g;
-        float q = a / lw, near = abs(q - floor(q + 0.5)) * lw, inner = step(0.5, q) * step(q, lanes - 0.5);
+        float q = (a - b0) / lw, near = abs(q - floor(q + 0.5)) * lw, inner = step(0.5, q) * step(q, lanes - 0.5);
         float paint = stripe(near, 0.028) * inner * dash;
         vec3 pc = vec3(0.62);
         float edge = stripe(a - (hw - 0.16), 0.030);
         float mid = lanes > 1.5 ? stripe(a - 0.07, 0.026) : stripe(a, 0.03) * dash;
-        float m = max(max(paint, edge), mid) * smoothstep(0.0, 0.8, vHub) * (0.65 + 0.35 * n2.g);
+        float m = max(max(max(paint, edge), mid), stripe(a - 0.86, 0.034) * bz) * smoothstep(0.0, 0.8, vHub) * (0.65 + 0.35 * n2.g);
         pc = mix(pc, vec3(0.78, 0.52, 0.08), step(a, 0.25) * step(1.5, lanes));
         c = mix(c, pc, m * 0.9);
         // wet: dark, with puddles; white: but for the tracks of the wheels
@@ -58,7 +59,7 @@ export function buildRoads(W) {
   const out = {}, hAt = (x, z, y) => { const q = net.at(x, z, y, null, out); return q && Math.abs(q.h - y) < 0.5 ? q.h : y; };
   // is this edge point on another road's surface?
   const covered = (x, z, y, self) => {
-    let c = false;
+    let c = !!net.transit && net.transit.mouth(x, z); if (c) return true;
     net.around(x, z, (r, i, t, d, h) => { if (r !== self && d < r.hw - 0.06 && Math.abs(h - y) < 0.55) c = true; });
     if (c) return true;
     for (const d of net.discs) if (Math.abs(d.x - x) < d.r && Math.abs(d.z - z) < d.r && Math.hypot(d.x - x, d.z - z) < d.r - 0.02 && Math.abs(d.h - y) < 1) return true;
@@ -90,7 +91,7 @@ export function buildRoads(W) {
       const pos = [], road = [], hub = [], idx = [], K = makeKerb();
       for (let i = i0; i <= i1; i++) {
         const [x, z, y, dx, dz] = F[i], dh = A ? Math.min(Math.hypot(x - A.x, z - A.z) - (A.r || 3), Math.hypot(x - B.x, z - B.z) - (B.r || 3)) : Math.min(r.s[i] - 1.6, r.len - r.s[i]);
-        for (const u of LAT) { const px = x - dz * u * r.hw, pz = z + dx * u * r.hw; pos.push(px, hAt(px, pz, y) + up, pz); road.push(u * r.hw, r.s[i], r.hw, RANK[r.style]); hub.push(dh); }
+        for (const u of LAT) { const px = x - dz * u * r.hw, pz = z + dx * u * r.hw; pos.push(px, hAt(px, pz, y) + up, pz); road.push(u * r.hw, r.s[i], r.hw, RANK[r.style] + (r.bus ? 1 : 0)); hub.push(dh); }
         if (i < i1) { const q = (i - i0) * 4; for (let k = 0; k < 3; k++) idx.push(q + k, q + k + 1, q + k + 4, q + k + 1, q + k + 5, q + k + 4); }
       }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aRoad', new THREE.Float32BufferAttribute(road, 4)); g.setAttribute('aHub', new THREE.Float32BufferAttribute(hub, 1)); g.setIndex(idx); normals(g);
@@ -100,8 +101,8 @@ export function buildRoads(W) {
       if (K.idx.length) finish(K);
     }
     // lamps, by turns on either side (the light pools of the asphalt's shader)
-    for (let s = 5, k = 0; s < r.len - 3; s += r.spur ? 20 : 10, k++) { const i = Math.min(r.n - 2, Math.round((s / r.len) * (r.n - 1))), E = edges[k % 2 ? 0 : 1][i]; if (E.free && !(r.tunnel && r.tunnel[i])) lamps.push([E.p[0] + E.nx * 0.3, E.y, E.p[1] + E.nz * 0.3, Math.atan2(-E.nx, -E.nz)]); }
-    if (r.id !== 'bogaz' && r.id !== 'fsm' && r.id !== 'yss') for (let i = 4; i < r.n - 4; i += 5) if (r.bridge[i]) { const [x, z, y, dx, dz] = F[i], gy = Math.max(-1.4, height(x, z)); if (y - gy > 0.9) { let under = false; net.around(x, z, (o, j, t, d, h) => { if (o !== r && d < o.hw + 0.4 && h < y - 0.6) under = true; }); if (!under) piers.push([x, gy - 0.2, z, r.hw, y - 0.3 - gy + 0.2, Math.atan2(dx, dz)]); } }
+    for (let s = 5, k = 0; s < r.len - 3; s += r.spur ? 20 : 10, k++) { const i = Math.min(r.n - 2, Math.round((s / r.len) * (r.n - 1))), E = edges[k % 2 ? 0 : 1][i]; if (E.free && !(r.tunnel && r.tunnel[i]) && !(net.transit && net.transit.over(E.p[0], E.p[1], E.y - 0.4, E.y + 1.5))) lamps.push([E.p[0] + E.nx * 0.3, E.y, E.p[1] + E.nz * 0.3, Math.atan2(-E.nx, -E.nz)]); }
+    if (r.id !== 'bogaz' && r.id !== 'fsm' && r.id !== 'yss') for (let i = 4; i < r.n - 4; i += 5) if (r.bridge[i]) { const [x, z, y, dx, dz] = F[i], gy = Math.max(-1.4, height(x, z)); if (y - gy > 0.9) { let under = false; net.around(x, z, (o, j, t, d, h) => { if (o !== r && d < o.hw + 0.4 && h < y - 0.6) under = true; }); if (!under && !(net.transit && net.transit.over(x, z, gy - 2, y - 0.3, 0.5))) piers.push([x, gy - 0.2, z, r.hw, y - 0.3 - gy + 0.2, Math.atan2(dx, dz)]); } }
   }
   for (const r of net.roads) if (r.tunnel) buildTube(W, r, lift);
   // ------------------------------------------------------------ junctions
@@ -113,7 +114,7 @@ export function buildRoads(W) {
     batch.add(pack(g), asphalt, 1.6, false);
 
     const K = makeKerb(), fake = { style: 'avenue', hw: 2 };
-    const E = Array.from({ length: 49 }, (_, k) => { const t = (k / 48) * Math.PI * 2, nx = Math.sin(t), nz = Math.cos(t), x = d.x + nx * d.r, z = d.z + nz * d.r; let on = false; net.around(x, z, (r, i, tt, D, h) => { if (D < r.hw - 0.02 && Math.abs(h - d.h) < 0.9) on = true; }); return { p: [x, z], nx, nz, y: y0(x, z), free: !on }; });
+    const E = Array.from({ length: 49 }, (_, k) => { const t = (k / 48) * Math.PI * 2, nx = Math.sin(t), nz = Math.cos(t), x = d.x + nx * d.r, z = d.z + nz * d.r; let on = false; net.around(x, z, (r, i, tt, D, h) => { if (D < r.hw - 0.02 && Math.abs(h - d.h) < 0.9) on = true; }); if (net.transit && net.transit.mouth(x, z)) on = true; return { p: [x, z], nx, nz, y: y0(x, z), free: !on }; });
     for (let k = 0; k < 48; k++) { const a = E[k], b = E[k + 1]; if (!a.free || !b.free) continue; const pa = profile(a.p, a.nx, a.nz, a.y, fake, 0, false), pb = profile(b.p, b.nx, b.nz, b.y, fake, 0, false), C = COLS(fake); for (let q = 0; q + 1 < pa.length; q++) strip(K, [pa[q], pa[q + 1]], [pb[q], pb[q + 1]], C[q]); }
     if (K.idx.length) finish(K);
   }

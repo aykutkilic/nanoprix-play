@@ -20,7 +20,7 @@ export class Cruiser {
   // where the road goes `s` from a position, over junctions; lateral to the right
   ahead(r, dir, s, dist, depth = 0) {
     const to = s + dir * dist, N = this.next, stop = depth === 0 && N && N.from === r && N.fdir === dir && N.at !== undefined ? N.at : dir > 0 ? r.len : 0;
-    if ((dir > 0 ? to <= stop && to >= 0 : to >= stop && to <= r.len)) { let lo = 0, hi = r.n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (r.s[m] <= to) lo = m; else hi = m; } const a = lo * 3, t = (to - r.s[lo]) / Math.max(1e-6, r.s[lo + 1] - r.s[lo]), dx = (r.p[a + 3] - r.p[a]) * dir, dz = (r.p[a + 4] - r.p[a + 1]) * dir, l = Math.hypot(dx, dz) || 1, lat = Math.max(0.3, r.hw * 0.42); return { x: r.p[a] + (r.p[a + 3] - r.p[a]) * t - (dz / l) * lat, z: r.p[a + 1] + (r.p[a + 4] - r.p[a + 1]) * t + (dx / l) * lat, dx: dx / l, dz: dz / l, r }; }
+    if ((dir > 0 ? to <= stop && to >= 0 : to >= stop && to <= r.len)) { let lo = 0, hi = r.n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (r.s[m] <= to) lo = m; else hi = m; } const a = lo * 3, t = (to - r.s[lo]) / Math.max(1e-6, r.s[lo + 1] - r.s[lo]), dx = (r.p[a + 3] - r.p[a]) * dir, dz = (r.p[a + 4] - r.p[a + 1]) * dir, l = Math.hypot(dx, dz) || 1, lat = r.bus ? 1.4 : Math.max(0.3, r.hw * 0.42); return { x: r.p[a] + (r.p[a + 3] - r.p[a]) * t - (dz / l) * lat, z: r.p[a + 1] + (r.p[a + 4] - r.p[a + 1]) * t + (dx / l) * lat, dx: dx / l, dz: dz / l, r }; }
     const rest = dist - Math.max(0, (stop - s) * dir), e = depth === 0 ? this.choose(r, dir) : this.pick(r, dir, 0); if (depth > 2) return this.ahead(r, dir, s, Math.max(0, (stop - s) * dir), 3);
     return this.ahead(e.r, e.dir, e.s0 ?? (e.dir > 0 ? 0 : e.r.len), Math.max(0, rest), depth + 1);
   }

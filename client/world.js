@@ -11,6 +11,8 @@ import { buildBuildings } from './buildings.js';
 import { buildLife } from './life.js';
 import { buildShips } from './ships.js';
 import { pack, Keeper, Still, merge } from './gpu.js';
+import { buildTransit } from './transit.js';
+import { Transit } from '../shared/transit.js';
 import { buildSigns } from './signs.js';
 import { buildSignals } from './signals.js';
 
@@ -22,6 +24,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   const root = new THREE.Group(), still = new Still(); scene.add(root); root.add(still);
   const g = A.map.grid, M0 = A.map.map, { height, coast } = A.ground;
   const night = { value: 0 }, time = { value: 0 }, W = { keeper: new Keeper(), still, mouths: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, glow: [], spots: [], updates: [], A };
+  W.transit = net.transit = new Transit({ ...A.transit, islands: A.roads.islands });
   W.lit = (m, color, k) => { m.emissive = new THREE.Color(color); m.emissiveIntensity = 0; W.glow.push([m, k]); return m; };
   W.mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, ...o });
   W.spot = (x, y, z, color, power, reach) => { const l = new THREE.PointLight(color, 0, reach, 1.6); l.position.set(x, y, z); root.add(l); W.spots.push([l, power]); return l; };
@@ -207,7 +210,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
 
   buildRoads(W); await onStage('roads');
   buildMarks(W); await onStage('landmarks');
-  buildLife(W); await onStage('life'); buildShips(W, A); await onStage('ships');
+  buildLife(W); await onStage('life'); buildShips(W, A); buildTransit(W); await onStage('ships');
   buildSigns(W); buildSignals(W); await onStage('signs');
   lampTex.needsUpdate = true;
 

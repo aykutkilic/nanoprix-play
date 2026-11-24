@@ -14,6 +14,7 @@ import { Loading } from './loading.js';
 import { Weather } from './weather.js';
 import { CHOICES, WEATHER, mixWeather } from '../shared/weather.js';
 import { Audio } from './audio.js';
+import { Music } from './music.js';
 import { Input } from './input.js';
 import { Net } from './net.js';
 import { HostSession, PeerNet } from './p2p.js';
@@ -31,12 +32,12 @@ const saveProfile = () => store('profile', JSON.stringify(profile));
 
 // ---------------------------------------------------------------- loading
 const loading = new Loading(ui);
-let A, net, view, game, hud, audio, fx, input, weather;
+let A, net, view, game, hud, audio, music, fx, input, weather;
 try {
   A = await loadAssets((file, n) => loading.bytes(file, n));
   net = new Network(A.roads); new Streets(net, A.streets); view = new View($('#gl')); await new Promise((r) => setTimeout(r, 20));
   view.world = await buildWorld(view.scene, A, net, (s) => loading.stage(s)); view.applyNight(0);
-  hud = new Hud(hudEl, A, net); audio = new Audio(); fx = new Fx(view.scene); input = new Input(document.body); weather = new Weather(view.scene, view.world, fx, audio); view.world.sea = (x, z) => weather.sea(x, z); game = new Game({ view, net, hud, audio, fx, input, weather }); view.warm();
+  hud = new Hud(hudEl, A, net); audio = new Audio(); music = new Music(audio); music.told = (n) => toast(`♪ ${n}`, 2600); fx = new Fx(view.scene); input = new Input(document.body); weather = new Weather(view.scene, view.world, fx, audio); view.world.sea = (x, z) => weather.sea(x, z); game = new Game({ view, net, hud, audio, fx, input, weather }); view.warm();
 } catch (e) { loading.fail(e.message); throw e; }
 loading.done(); ui.innerHTML = '';
 
@@ -112,7 +113,7 @@ function resultsHtml() {
   const tab = !st || resTab === 'classification' ? cls : resTab === 'lapTimes' ? lapTable(st, statsMe) : resTab === 'timing' ? board(st, statsMe) : `${gapChart(st, statsMe, { w: 820, h: 260 })}${placeChart(st, statsMe, { w: 820, h: 240 })}`;
   return `<div class="panel center wide"><h2>${t('results')} – ${COURSES.find((c) => c.id === R.course).name[lang()]}</h2>${st ? `<div class="row seg" style="margin-bottom:14px">${['classification', 'lapTimes', 'timing', 'charts'].map((k) => `<button data-tab="${k}" class="${k === resTab ? 'on' : ''}">${t(k)}</button>`).join('')}</div>` : ''}<div class="tabbody">${tab}</div><div class="col"><button class="main" data-do="room">${t('again')}</button></div></div>`;
 }
-function settingsHtml() { return `<div class="panel center"><h2>${t('settings')}</h2><label>${t('graphics')}</label>${seg('gfx', ['auto', 'high', 'medium', 'low'].map((k) => [k, t(k)]), view.gfx)}<label>${t('tilt')}</label>${seg('tilt', [[true, '✓'], [false, '✕']], view.tiltOn)}<label>${t('sound')}</label>${seg('sound', [[true, '✓'], [false, '✕']], audio.on)}<label>${t('lang')}</label>${seg('lang', [['tr', 'Türkçe'], ['en', 'English']], lang())}<p class="desc">${t('controls')}</p><div class="col"><button class="main" data-do="settings">${t('resume')}</button></div></div>`; }
+function settingsHtml() { return `<div class="panel center"><h2>${t('settings')}</h2><label>${t('graphics')}</label>${seg('gfx', ['auto', 'high', 'medium', 'low'].map((k) => [k, t(k)]), view.gfx)}<label>${t('tilt')}</label>${seg('tilt', [[true, '✓'], [false, '✕']], view.tiltOn)}<label>${t('sound')}</label>${seg('sound', [[true, '✓'], [false, '✕']], audio.on)}<label>${t('music')}</label>${seg('music', [[true, '✓'], [false, '✕']], music.on)}<div class="row"><button class="grow" data-do="track">♪ ${t('nextTrack')}</button></div><label>${t('lang')}</label>${seg('lang', [['tr', 'Türkçe'], ['en', 'English']], lang())}<p class="desc">${t('controls')}</p><div class="col"><button class="main" data-do="settings">${t('resume')}</button></div></div>`; }
 function pauseHtml() { const am = room && room.hostId === myId; return `<div class="panel center"><h2>NANOPRIX</h2><p class="desc">${t('controls')}</p><div class="col"><button class="main" data-do="resume">${t('resume')}</button>${am ? `<button data-do="stop">${t(game.free ? 'again' : 'quit')}</button>` : ''}${room && room.code ? `<button data-do="invite">${t('invite')} · ${room.code}</button>` : host ? `<button data-do="open" ${busy ? 'disabled' : ''}>${busy ? t('opening') : t('openOnline')}</button>` : ''}<button data-do="leave">${t('leave')}</button></div></div>`; }
 const set = (o) => link && link.send({ t: 'set', settings: { ...room.settings, ...o } });
 const sendProfile = () => { saveProfile(); if (link && room) link.send({ t: 'profile', profile }); };
@@ -120,13 +121,14 @@ ui.addEventListener('click', async (e) => {
   const b = e.target.closest('button'); if (!b) return; b.blur(); const d = b.dataset;
   if (d.car) { profile.car = d.car; sendProfile(); showCar(); draw(); return; } if (d.color) { profile.color = d.color; sendProfile(); showCar(); draw(); return; }
   if (d.course) { const c = COURSES.find((q) => q.id === d.course); set({ course: c.id, laps: c.laps }); return; } if (d.tab) { resTab = d.tab; draw(); return; } if (d.watch) { link.send({ t: 'watch', on: d.watch === '1' }); return; } if (d.start) { set({ start: d.start }); return; } if (d.kick) { link.send({ t: 'kick', id: +d.kick }); return; }
-  const sg = b.closest('[data-seg]'); if (sg) { const k = sg.dataset.seg, v = d.v === 'true' ? true : d.v === 'false' ? false : Number.isNaN(+d.v) ? d.v : +d.v; if (k === 'gfx') view.chooseQuality(v); else if (k === 'tilt') { view.tiltOn = v; store('tilt', v ? '1' : '0'); } else if (k === 'sound') audio.toggle(v); else if (k === 'lang') setLang(v); else { set({ [k]: v }); return; } draw(); return; }
+  const sg = b.closest('[data-seg]'); if (sg) { const k = sg.dataset.seg, v = d.v === 'true' ? true : d.v === 'false' ? false : Number.isNaN(+d.v) ? d.v : +d.v; if (k === 'gfx') view.chooseQuality(v); else if (k === 'tilt') { view.tiltOn = v; store('tilt', v ? '1' : '0'); } else if (k === 'sound') { audio.toggle(v); music.sync(); } else if (k === 'music') music.toggle(v); else if (k === 'lang') setLang(v); else { set({ [k]: v }); return; } draw(); return; }
   switch (d.do) {
     case 'solo': solo(); break; case 'create': create(); break; case 'join': join($('#code').value); break; case 'open': openRoom(); break; case 'leave': paused = false; leave(); break; case 'start': link.send({ t: 'start' }); break;
     case 'ready': { const me = room.members.find((m) => m.id === myId); link.send({ t: 'ready', on: !me.ready }); break; }
     case 'free': if (link) break; wantCruise = true; solo(); break; case 'room': results = null; go('room'); break; case 'resume': paused = false; draw(); break;
     case 'stop': paused = false; link.send({ t: 'lobby' }); break;
     case 'invite': { const u = `${location.origin}${location.pathname}#${room.code}`; try { await navigator.clipboard.writeText(u); toast(t('copied')); } catch { toast(u, 8000); } break; }
+    case 'track': if (!music.on) music.toggle(true); music.next(); draw(); break;
     case 'settings': settingsOpen = !settingsOpen; draw(); break; case 'cam': cam(); break; case 'night': if (game.active) game.toggleNight(); else menuNight = menuNight ? 0 : 1; setTimeout(draw, 900); break; default:
   }
 });
@@ -136,6 +138,7 @@ const cam = (e) => { if (e && e.preventDefault) e.preventDefault(); if (game.act
 input.on('F2', cam); input.on('KeyC', cam); input.on('ArrowLeft', () => game.pickWatch(-1)); input.on('ArrowRight', () => game.pickWatch(1)); input.on('KeyG', () => game.toggleAuto()); input.on('Tab', (e) => { if (!game.active || !game.stats) return; e.preventDefault(); if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); game.showFull(); }); input.on('KeyT', () => { if (game.active && game.stats) game.nextMode(); });
 ui.addEventListener('pointermove', hover); ui.addEventListener('pointerleave', hover);
 input.on('KeyV', () => { if (!game.active || !room || room.hostId !== myId) return; const i = CHOICES.indexOf(game.wx.to); link.send({ t: 'weather', weather: CHOICES[(i + 1) % CHOICES.length] }); }); input.on('KeyN', () => { if (game.active) game.toggleNight(); else menuNight = menuNight ? 0 : 1; }); input.on('KeyR', () => game.reset());
+input.on('KeyM', () => { music.toggle(!music.on); toast(music.on ? `♪ ${music.name}` : '♪ ✕', 1600); if (settingsOpen) draw(); });
 input.on('Escape', () => { if (settingsOpen) settingsOpen = false; else if (screen === 'race') paused = !paused; draw(); });
 
 // ---------------------------------------------------------------- behind the menus: a slow flight round the course, the car turning in front
@@ -159,4 +162,4 @@ function loop(now) {
 }
 go('home'); requestAnimationFrame(loop);
 if (/^#[A-Za-z]{4}$/.test(location.hash)) join(location.hash.slice(1));
-window.nanoprix = { view, game, net, get room() { return room; }, get link() { return link; } };
+window.nanoprix = { view, game, net, music, get room() { return room; }, get link() { return link; } };

@@ -13,6 +13,7 @@ export class Network {
       for (let i = 1; i < n; i++) s[i] = s[i - 1] + Math.hypot(p[i * 3] - p[i * 3 - 3], p[i * 3 + 1] - p[i * 3 - 2]);
       return { ...r, index, n, p, s, len: s[n - 1], bridge: Uint8Array.from(r.br, (c) => +c), tunnel: r.tu ? Uint8Array.from(r.tu, (c) => +c) : null }; // (tunnel: 1 in a cutting, 2 under ground)
     });
+    this.islands = new Map(); for (const q of data.islands || []) for (let u = -q.L - 2.5; u <= q.L + 2.5; u += 1) { const k = Math.floor((q.x + q.dx * u) / 4) * 8192 + Math.floor((q.z + q.dz * u) / 4); if (!this.islands.has(k)) this.islands.set(k, new Set()); this.islands.get(k).add(q); } // (the metrobüs' platforms, in the middle of the D100)
     this.main = this.roads.filter((r) => !r.spur); this.spurs = this.roads.filter((r) => r.spur);
     this.byId = new Map(this.roads.map((r) => [r.id, r]));
     this.cell = 4;
@@ -74,6 +75,13 @@ export class Network {
     return out;
   }
 
+  // the island one would be in: [it, how far along, how far to its right, its half width there (it tapers to a point)]
+  island(x, z, y, m) {
+    const S = this.islands.get(Math.floor(x / 4) * 8192 + Math.floor(z / 4)); if (!S) return null;
+    for (const q of S) { if (Math.abs(q.h - y) > 0.7) continue; const ex = x - q.x, ez = z - q.z, u = ex * q.dx + ez * q.dz, e = Math.abs(u) - q.L; if (e > 2.5) continue; const w = (q.w + m) * (e <= 0 ? 1 : 1 - e / 2.5), v = -ex * q.dz + ez * q.dx; if (Math.abs(v) < w) return [q, u, v, w]; }
+    return null;
+  }
+
   // is a car in the tunnel (2), in a cutting (1), or neither?
   under(c) { const q = this.at(c.x, c.z, c.y + 0.15, null, (this.uq ||= {})); return q && q.road.tunnel ? q.road.tunnel[q.i] : 0; }
 
@@ -95,10 +103,11 @@ export class Course {
     const hubs = reverse ? [def.hubs[0], ...def.hubs.slice(1).reverse()] : def.hubs;
     const path = net.pathRoads(hubs), pts = [];
     this.only = new Set(path.map(([r]) => r.index));
-    for (const [r, dir] of path) for (let k = 0; k + 1 < r.n; k++) { const i = dir > 0 ? k : r.n - 1 - k; pts.push([r.p[i * 3], r.p[i * 3 + 1], r.p[i * 3 + 2], r.hw, r.index, r.tunnel ? r.tunnel[i] : 0]); }
+    for (const [r, dir] of path) for (let k = 0; k + 1 < r.n; k++) { const i = dir > 0 ? k : r.n - 1 - k; pts.push([r.p[i * 3], r.p[i * 3 + 1], r.p[i * 3 + 2], r.hw, r.index, r.tunnel ? r.tunnel[i] : 0, r.bus ? 1 : 0]); }
     this.n = pts.length;
     this.x = Float32Array.from(pts, (p) => p[0]); this.z = Float32Array.from(pts, (p) => p[1]); this.h = Float32Array.from(pts, (p) => p[2]); this.hw = Float32Array.from(pts, (p) => p[3]); this.road = Uint16Array.from(pts, (p) => p[4]);
     this.tunnel = Uint8Array.from(pts, (p) => p[5]);
+    this.bus = Float32Array.from(pts, (p) => p[6]); for (let k = 0; k < 6; k++) { const o = this.bus.slice(); for (let i = 0; i < this.n; i++) this.bus[i] = (o[(i - 1 + this.n) % this.n] + o[i] + o[(i + 1) % this.n]) / 3; } // (the metrobüs has the middle of it: traffic keeps out)
     this.s = new Float32Array(this.n + 1);
     for (let i = 0; i < this.n; i++) { const j = (i + 1) % this.n; this.s[i + 1] = this.s[i] + Math.hypot(this.x[j] - this.x[i], this.z[j] - this.z[i]); }
     this.len = this.s[this.n];
@@ -127,6 +136,8 @@ export class Course {
       o[i] += 0.35 * (Math.max(-lim, Math.min(lim, lat)) - o[i]);
       px[i] = this.x[i] - D[i][1] * o[i]; pz[i] = this.z[i] + D[i][0] * o[i];
     }
+    // round the metrobüs' islands, on the nearer side
+    { const S = new Set(); for (const q of this.net.islands.values()) for (const e of q) S.add(e); const keep = new Float32Array(n); for (const q of S) { let sd = 0; for (let i = 0; i < n; i++) if (Math.hypot(this.x[i] - q.x, this.z[i] - q.z) < 1.5 && Math.abs(this.h[i] - q.h) < 1) { sd = o[i] < 0 ? -1 : 1; } if (sd) for (let i = 0; i < n; i++) { const d = Math.hypot(this.x[i] - q.x, this.z[i] - q.z); if (d < q.L + 14 && Math.abs(this.h[i] - q.h) < 2) keep[i] = sd * Math.max(Math.abs(keep[i]), Math.min(1, (q.L + 14 - d) / 10)); } } for (let i = 0; i < n; i++) if (keep[i]) { const sd = Math.sign(keep[i]), w = Math.abs(keep[i]); if (o[i] * sd < 0.95) o[i] += (sd * 0.95 - o[i]) * w; px[i] = this.x[i] - D[i][1] * o[i]; pz[i] = this.z[i] + D[i][0] * o[i]; } }
     for (let i = 0; i < n; i++) {
       const a = (i - 3 + n) % n, b = (i + 3) % n, v1x = px[i] - px[a], v1z = pz[i] - pz[a], v2x = px[b] - px[i], v2z = pz[b] - pz[i], l = (Math.hypot(v1x, v1z) + Math.hypot(v2x, v2z)) / 2 || 1, cr = Math.abs(v1x * v2z - v1z * v2x) / (Math.hypot(v1x, v1z) * Math.hypot(v2x, v2z) || 1), k = Math.asin(Math.min(1, cr)) / l;
       this.vmax[i] = Math.min(40, Math.sqrt(17 / Math.max(k, 1e-4)));

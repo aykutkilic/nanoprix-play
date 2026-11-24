@@ -5,7 +5,7 @@ async function bytes(n, on) { const r = await fetch(new URL(n, BASE)); if (!r.ok
 const json = async (n, on) => JSON.parse(await new Response(await bytes(n, on)).text());
 const gunzip = async (n, on) => new Response((await bytes(n, on)).pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
 export async function loadAssets(on = () => {}) {
-  const [roads, streets, map, marks, tb, lb, cb, ports, shipsBin] = await Promise.all([json('roads.json', on), json('streets.json', on), json('map.json', on), json('landmarks.json', on), gunzip('terrain.bin', on), gunzip('landmarks.bin', on), gunzip('city.bin', on), json('ports.json', on), gunzip('ships.bin', on)]);
+  const [roads, streets, map, marks, tb, lb, cb, ports, shipsBin, transit] = await Promise.all([json('roads.json', on), json('streets.json', on), json('map.json', on), json('landmarks.json', on), gunzip('terrain.bin', on), gunzip('landmarks.bin', on), gunzip('city.bin', on), json('ports.json', on), gunzip('ships.bin', on), json('transit.json', on)]);
   // terrain: heights as deltas along the rows, low and high bytes apart
   const { w, h } = map.grid, N = w * h, u = new Uint8Array(tb), H = new Float32Array(N);
   for (let k = 0, v = 0; k < N; k++) { const d = u[k] | (u[N + k] << 8); v = k % w ? (v + d) & 65535 : d; H[k] = v / 400 - 20; }
@@ -14,7 +14,7 @@ export async function loadAssets(on = () => {}) {
   const c0 = marks.nv * 6;
   lm.col = new Uint8Array(lb.slice(c0, c0 + marks.nv * 4)); lm.idx = new Uint32Array(lb.slice(c0 + marks.nv * 4));
   const [nb, nt, nw] = new Uint32Array(cb, 0, 3), buildings = Int32Array.from(new Int16Array(cb, 12, nw)), trees = Int32Array.from(new Int16Array(cb, 12 + nw * 2, nt * 4)), mz = Math.round((map.map.z0 + map.map.z1) / 2) * 20; for (let k = 0, o = 0; k < nb; k++) { buildings[o + 1] += mz; o += 6 + (buildings[o + 5] & 255) * 2; } for (let k = 1; k < trees.length; k += 4) trees[k] += mz;
-  return { roads, streets, map, ground: makeGround(map.grid, H, shore), H, shore, park, landmarks: lm, buildings, buildingCount: nb, trees, ports, shipsBin };
+  return { roads, streets, map, ground: makeGround(map.grid, H, shore), H, shore, park, landmarks: lm, buildings, buildingCount: nb, trees, ports, shipsBin, transit };
 }
 function makeGround(g, H, S) {
   const look = (f, k) => (x, z) => {

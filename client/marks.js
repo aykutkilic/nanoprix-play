@@ -23,7 +23,7 @@ export function buildMarks(W) {
   const stone = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, side: THREE.DoubleSide, shadowSide: THREE.BackSide });
   stone.onBeforeCompile = (s) => {
     s.uniforms.uNight = night;
-    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute float aKind; varying float vKind; varying vec3 vL; varying vec3 vP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvKind = aKind; vL = position; vP = (modelMatrix * vec4(position, 1.0)).xyz;');
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying float vKind; varying vec3 vL; varying vec3 vP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvKind = floor(color.a * 255.0 + 0.5); vL = (modelMatrix * vec4(position, 0.0)).xyz; vP = (modelMatrix * vec4(position, 1.0)).xyz;');
     s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight; varying float vKind; varying vec3 vL; varying vec3 vP;')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (vKind > 0.5 && vKind < 1.5) roughnessFactor = 0.15; if (vKind > 1.5 && vKind < 2.5) roughnessFactor = 0.3;')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nif (vKind > 1.5 && vKind < 2.5) metalnessFactor = 0.9;')
@@ -37,19 +37,17 @@ export function buildMarks(W) {
   W.marks = [];
   for (const m of L.items) {
     const { P, N } = creased(L.pos.subarray(m.v0 * 3, (m.v0 + m.vn) * 3), L.idx.subarray(m.i0, m.i0 + m.in), m.q);
-    const n = m.in, C = new Uint8Array(n * 3), K = new Uint8Array(n);
-    for (let k = 0; k < n; k++) { const i = (m.v0 + L.idx[m.i0 + k]) * 4; C[k * 3] = L.col[i]; C[k * 3 + 1] = L.col[i + 1]; C[k * 3 + 2] = L.col[i + 2]; K[k] = L.col[i + 3]; }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.BufferAttribute(N, 4, true));
-    const CF = new Float32Array(n * 3); for (let k = 0; k < n * 3; k++) CF[k] = C[k] / 255; // (already linear, as glTF's colours are)
-    g.setAttribute('color', new THREE.BufferAttribute(CF, 3)); g.setAttribute('aKind', new THREE.BufferAttribute(K, 1)); g.computeBoundingSphere();
-    const o = new THREE.Mesh(g, stone); o.position.set(m.x, m.y, m.z); o.castShadow = o.receiveShadow = true; o.name = m.name; root.add(o); o.updateMatrix(); o.matrixAutoUpdate = false;
+    const n = m.in, C = new Uint8Array(n * 4), I = new Int16Array(n * 4); void P;
+    for (let k = 0; k < n; k++) { const v = m.v0 + L.idx[m.i0 + k], i = v * 4; for (let q = 0; q < 4; q++) C[k * 4 + q] = L.col[i + q]; for (let q = 0; q < 3; q++) I[k * 4 + q] = L.pos[v * 3 + q]; } // (colours already linear, as glTF's are; the fourth: what kind of thing it is)
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(I, 4)); g.setAttribute('normal', new THREE.BufferAttribute(N, 4, true)); g.setAttribute('color', new THREE.BufferAttribute(C, 4, true)); g.computeBoundingSphere();
+    const o = new THREE.Mesh(g, stone); o.position.set(m.x, m.y, m.z); o.scale.setScalar(m.q); o.castShadow = o.receiveShadow = true; o.name = m.name; root.add(o); o.updateMatrix(); o.matrixAutoUpdate = false; W.keeper.add(o, m.top > 9 ? 9 : m.top > 4 || m.hero ? 2.2 : 1.12);
     W.marks.push({ ...m, obj: o });
     if (W.coast(m.x, m.z) < 10) W.light(m.x, m.z, Math.min(6, m.r * 0.6), 0.5);
   }
   const mat = W.mat, lit = W.lit, piece = (geo, m, x, y, z, parent) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; parent.add(o); return o; };
   // ------------------------------------------------------------ the two bridges over the Bosphorus
   W.bridgeLights = [];
-  for (const [id, topY] of [['bogaz', 19], ['fsm', 18.4]]) {
+  for (const [id, topY] of [['bogaz', 19], ['fsm', 18.4], ['yss', 37]]) {
     const r = net.byId.get(id); if (!r) continue;
     let i0 = -1, i1 = -1; for (let i = 0; i < r.n; i++) if (W.coast(r.p[i * 3], r.p[i * 3 + 1]) < -0.4) { if (i0 < 0) i0 = i; i1 = i; }
     i0 = Math.max(2, i0 - 4); i1 = Math.min(r.n - 3, i1 + 4);

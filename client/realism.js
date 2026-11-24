@@ -332,6 +332,7 @@ export class Post {
   }
 
   setSize(w, h, samples = 4) {
+    if (w * h > 2.7e6) samples = Math.min(samples, 2); // (so many pixels that two to each will do)
     if (this.main && this.w === w && this.h === h && this.main.samples === samples) return;
     this.dispose();
     this.w = w; this.h = h;
@@ -376,6 +377,8 @@ export class Post {
     this.pass(this.final, null);
   }
 
+  targets() { return [this.main, this.ao1, this.ao2, this.b1, this.b2, this.s1, this.s2].flatMap((t) => (t ? [t, t.texture, t.depthTexture] : [])).filter(Boolean); }
+  materials() { return Object.values(this).filter((m) => m && m.isMaterial); }
   dispose() { for (const t of [this.main, this.ao1, this.ao2, this.b1, this.b2, this.s1, this.s2]) if (t) { if (t.depthTexture) t.depthTexture.dispose(); t.dispose(); } this.main = null; }
 }
 
@@ -385,8 +388,8 @@ export class Post {
 // first lose antialiasing samples and shadow detail, then ambient occlusion
 // and bloom, and only then pixels – never below one per CSS pixel.
 export const QUALITY = {
-  high: { post: true, samples: 4, dpr: 2, pixels: 9e6, shadow: 4096, text: 440 },
-  medium: { post: true, samples: 2, dpr: 2, pixels: 6e6, shadow: 2048, text: 400 },
+  high: { post: true, samples: 4, dpr: 2, pixels: 4.4e6, shadow: 4096, text: 440 },
+  medium: { post: true, samples: 2, dpr: 2, pixels: 3.2e6, shadow: 2048, text: 400 },
   low: { post: false, samples: 0, dpr: 1.5, pixels: 4e6, shadow: 2048, text: 320 },
 };
 export const STEPS = ['high', 'medium', 'low'];

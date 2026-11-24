@@ -31,6 +31,13 @@ export class Network {
     for (const r of this.main) for (const [a, b] of [[r.a, r.b], [r.b, r.a]]) { if (!this.adj.has(a)) this.adj.set(a, []); this.adj.get(a).push({ to: b, r }); }
   }
 
+  // where each side street leaves the road it comes off: by that road, [{ s, spur, side: +1 right of its direction, x, z }]
+  sides() {
+    if (this._sides) return this._sides; const M = (this._sides = new Map()); this.joint = new Map();
+    for (const r of this.spurs) { const x = r.p[0], z = r.p[1], y = r.p[2]; let b = null; this.around(x, z, (q, i, t, d, h) => { if (q === r || d > q.hw || Math.abs(h - y) > 0.6) return; const k = d + (q.spur ? 0.4 : 0); if (!b || k < b.k) b = { k, q, i, t }; }); if (!b) continue; const { q, i, t } = b, s = q.s[i] + (q.s[i + 1] - q.s[i]) * t, a = i * 3, dx = q.p[a + 3] - q.p[a], dz = q.p[a + 4] - q.p[a + 1], e = Math.min(r.n - 1, 4) * 3, vx = r.p[e] - x, vz = r.p[e + 1] - z, o = { s, spur: r, side: dx * vz - dz * vx > 0 ? 1 : -1, yaw: Math.atan2(vx, vz) }; if (!M.has(q)) M.set(q, []); M.get(q).push(o); this.joint.set(r, { r: q, s, i }); }
+    for (const l of M.values()) l.sort((a, b) => a.s - b.s); return M;
+  }
+
   // calls fn(road, i, t, d, h) for each stretch within reach of a point
   around(x, z, fn, only) {
     const q = this.cells.get(Math.floor(x / 4) * 8192 + Math.floor(z / 4));

@@ -54,14 +54,16 @@ export function drawSign(g, s, w, h) {
 }
 const SMALL_ONLY = new Set(['limit', 'bend', 'hill', 'lights', 'crossing', 'deadend', 'camera']); // (these are small anyway; the rest are made smaller, and stand aside, on a narrow street)
 export function buildSigns(W) {
-  const { root, net, night } = W, plan = (W.signs = planSigns(net, W.marks)), PAGE = 2048, pages = [], cells = new Map();
-  const newPage = () => { const c = document.createElement('canvas'); c.width = c.height = PAGE; const p = { c, g: c.getContext('2d'), x: 0, y: 0, rowH: 0, pos: [], uv: [], nor: [], idx: [] }; pages.push(p); return p; };
+  const { root, net, night } = W, plan = (W.signs = planSigns(net, W.marks)), PAGE = 1024, TILE = 420, pages = [], books = new Map();
+  // the pictures of a district go on pages of their own, drawn when one comes near and thrown away after
+  const newPage = (book) => { const p = { items: [], x: 0, y: 0, rowH: 0, pos: [], uv: [], nor: [], idx: [] }; pages.push(p); book.pages.push(p); return p; };
   // same sign, same picture
   const cell = (s) => {
+    const bk = `${Math.floor(s.x / TILE)},${Math.floor(s.z / TILE)}`; let book = books.get(bk); if (!book) books.set(bk, (book = { pages: [], cells: new Map() })); const cells = book.cells;
     const key = JSON.stringify([s.kind, s.text, s.right, s.green, s.no, s.up, s.ahead, s.rows && s.rows.map((r) => [r.arrow, r.items, r.ref])]); if (cells.has(key)) return cells.get(key);
-    const [, , w, h] = size(s); let p = pages[pages.length - 1] || newPage();
-    if (p.x + w + 4 > PAGE) { p.x = 0; p.y += p.rowH + 4; p.rowH = 0; } if (p.y + h + 4 > PAGE) p = newPage();
-    p.g.save(); p.g.translate(p.x + 2, p.y + 2); p.g.beginPath(); p.g.rect(0, 0, w, h); p.g.clip(); drawSign(p.g, s, w, h); p.g.restore(); const r = { p, u0: (p.x + 2) / PAGE, v0: 1 - (p.y + 2) / PAGE, u1: (p.x + 2 + w) / PAGE, v1: 1 - (p.y + 2 + h) / PAGE }; p.x += w + 4; p.rowH = Math.max(p.rowH, h); cells.set(key, r); return r;
+    const [, , w, h] = size(s); let p = book.pages[book.pages.length - 1] || newPage(book);
+    if (p.x + w + 4 > PAGE) { p.x = 0; p.y += p.rowH + 4; p.rowH = 0; } if (p.y + h + 4 > PAGE) p = newPage(book);
+    p.items.push([s, p.x + 2, p.y + 2, w, h]); const r = { p, u0: (p.x + 2) / PAGE, v0: 1 - (p.y + 2) / PAGE, u1: (p.x + 2 + w) / PAGE, v1: 1 - (p.y + 2 + h) / PAGE }; p.x += w + 4; p.rowH = Math.max(p.rowH, h); cells.set(key, r); return r;
   };
   const posts = [], backs = [];
   for (const s of [...plan].sort((a, b) => size(b)[3] - size(a)[3])) { // (tallest first: they pack)
@@ -75,10 +77,16 @@ export function buildSigns(W) {
     const rect = !['limit', 'bend', 'hill', 'lights'].includes(s.kind); if (rect) backs.push([cx, y0 + h / 2, cz, yaw, w * 0.99, h * 0.97, 0.04]);
     if (s.kind === 'gantry') { const span = s.hw * 2 + 0.68; posts.push([s.x, s.y - 0.3, s.z, yaw, 0.16, 3.4, 0.16], [s.x - rx * span, s.y - 0.3, s.z - rz * span, yaw, 0.16, 3.4, 0.16]); for (const e of [2.5, 2.95]) backs.push([s.cx + s.dx * 0.1, s.y + e, s.cz + s.dz * 0.1, yaw, span, 0.09, 0.09]); } else { posts.push([s.x, s.y - 0.4, s.z, yaw, big ? 0.14 : 0.06, low + 0.4 + (big ? h * 0.9 : rect ? h : h * 0.7), big ? 0.14 : 0.06]); if (big) backs.push([s.x + (rx * off) / 2 + s.dx * 0.08, y0 + h * 0.5, s.z + (rz * off) / 2 + s.dz * 0.08, yaw, Math.abs(off) + 0.2, 0.08, 0.08]); }
   }
+  const draw = (p) => { const c = document.createElement('canvas'); c.width = c.height = PAGE; const g = c.getContext('2d'); for (const [q, x, y, w, h] of p.items) { g.save(); g.translate(x, y); g.beginPath(); g.rect(0, 0, w, h); g.clip(); drawSign(g, q, w, h); g.restore(); } return c; };
   for (const p of pages) {
-    const t = new THREE.CanvasTexture(p.c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; const m = new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: '#ffffff', emissiveIntensity: 0.1, roughness: 0.55, alphaTest: 0.5 }); W.updates.push(() => { m.emissiveIntensity = 0.1 + night.value * 0.42; });
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(p.nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(p.uv, 2)); g.setIndex(p.idx); const o = new THREE.Mesh(g, m); o.receiveShadow = true; o.frustumCulled = false; root.add(o);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(p.nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(p.uv, 2)); g.setIndex(p.idx); g.computeBoundingSphere();
+    p.m = new THREE.MeshStandardMaterial({ emissive: '#ffffff', emissiveIntensity: 0.1, roughness: 0.55, alphaTest: 0.5 }); p.o = new THREE.Mesh(g, p.m); p.o.receiveShadow = true; p.o.visible = false; root.add(p.o); p.s = g.boundingSphere;
   }
+  // one page drawn a frame at most; what has been out of sight a while goes
+  W.updates.push((dt, now, cam, far) => {
+    let best = null; for (const p of pages) { const d = Math.hypot(p.s.center.x - cam.x, p.s.center.z - cam.z) - p.s.radius, see = d < Math.min(far || 400, 330); p.o.visible = see && !!p.t; if (p.t) p.m.emissiveIntensity = 0.1 + night.value * 0.42; if (see) { p.off = 0; if (!p.t && (!best || d < best.d)) best = { d, p }; } else if (p.t) { p.off ||= now; if (now - p.off > 8000) { p.t.dispose(); p.t.image.width = p.t.image.height = 0; p.t = null; p.m.map = p.m.emissiveMap = null; p.o.geometry.dispose(); } } }
+    if (best) { const p = best.p, t = (p.t = new THREE.CanvasTexture(draw(p))); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; p.m.map = p.m.emissiveMap = t; p.m.needsUpdate = true; }
+  });
   W.signPages = pages.length;
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0), grey = W.mat('#7f868b', { metalness: 0.4, roughness: 0.55 }), inst = (geo, L) => { const o = new THREE.InstancedMesh(geo, grey, L.length); L.forEach(([x, y, z, a, w, h, d], k) => { M.compose(new THREE.Vector3(x, y, z), Q.setFromAxisAngle(UP, a), new THREE.Vector3(w, h, d)); o.setMatrixAt(k, M); }); o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; root.add(o); };
   inst(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), posts); inst(new THREE.BoxGeometry(1, 1, 1), backs);

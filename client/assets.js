@@ -16,7 +16,7 @@ export async function loadAssets(onProgress) {
   const lm = { ...marks, pos: new Int16Array(lb, 0, marks.nv * 3) };
   const c0 = marks.nv * 6;
   lm.col = new Uint8Array(lb.slice(c0, c0 + marks.nv * 4)); lm.idx = new Uint32Array(lb.slice(c0 + marks.nv * 4));
-  const [nb, nt, nw] = new Uint32Array(cb, 0, 3), buildings = new Int16Array(cb, 12, nw), trees = new Int16Array(cb, 12 + nw * 2, nt * 4);
+  const [nb, nt, nw] = new Uint32Array(cb, 0, 3), buildings = Int32Array.from(new Int16Array(cb, 12, nw)), trees = Int32Array.from(new Int16Array(cb, 12 + nw * 2, nt * 4)), mz = Math.round((map.map.z0 + map.map.z1) / 2) * 20; for (let k = 0, o = 0; k < nb; k++) { buildings[o + 1] += mz; o += 6 + (buildings[o + 5] & 255) * 2; } for (let k = 1; k < trees.length; k += 4) trees[k] += mz;
   return { roads, streets, map, ground: makeGround(map.grid, H, shore), H, shore, park, landmarks: lm, buildings, buildingCount: nb, trees, ports, shipsBin };
 }
 function makeGround(g, H, S) {

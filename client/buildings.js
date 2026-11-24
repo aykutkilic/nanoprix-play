@@ -8,6 +8,7 @@
 import * as THREE from './vendor/three.module.min.js';
 import { rng, noiseTexture } from './realism.js';
 import { weathered } from './weather.js';
+import { pack } from './gpu.js';
 
 const K = { house: 0, flats: 1, old: 2, office: 3, glass: 4, tower: 5, shops: 6, works: 7, public: 8, yali: 9, mosque: 10, church: 11, hotel: 12 };
 const TILE = 60, lin = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
@@ -92,7 +93,7 @@ export function buildBuildings(W) {
   const trim = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide, shadowSide: THREE.BackSide });
   trim.onBeforeCompile = (s) => {
     s.uniforms.uNight = night;
-    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nattribute float aR; varying float vR; varying vec3 vWp; varying vec3 vNw;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvR = aR; vWp = position; vNw = normal;');
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying float vR; varying vec3 vWp; varying vec3 vNw;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvR = floor(color.a * 255.0 + 0.5); vWp = position; vNw = normal;');
     s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight; varying float vR; varying vec3 vWp; varying vec3 vNw;').replace('#include <color_fragment>', `#include <color_fragment>
       if (vR > 0.5 && vR < 1.5) { vec2 a = normalize(vec2(-vNw.z, vNw.x) + 1e-5); float u = dot(vWp.xz, a), w = vWp.y / max(0.25, sqrt(1.0 - vNw.y * vNw.y)); float f = fwidth(u * 14.0) + fwidth(w * 9.0), n = 1.0 - smoothstep(0.25, 0.9, f); float t = 0.5 + 0.5 * sin(u * 88.0); diffuseColor.rgb *= mix(0.96, 0.80 + 0.26 * t - 0.16 * step(0.82, fract(w * 9.0)), n) * (0.93 + 0.12 * fract(sin(dot(floor(vec2(u * 14.0, w * 9.0)), vec2(12.9, 78.2))) * 43758.5)); }
       else if (vR > 1.5 && vR < 2.5) { float u = vWp.x * 0.9 + vWp.z * 0.7; diffuseColor.rgb *= 0.92 + 0.12 * step(0.5, fract(u * 5.0)); }`)
@@ -159,8 +160,8 @@ export function buildBuildings(W) {
     }
   }
   let cumba = [];
-  const geoW = (g) => { const b = new THREE.BufferGeometry(); b.setAttribute('position', new THREE.Float32BufferAttribute(g.pos, 3)); b.setAttribute('normal', new THREE.Float32BufferAttribute(g.nor, 3)); b.setAttribute('color', new THREE.Float32BufferAttribute(g.col, 3)); b.setAttribute('aF', new THREE.Float32BufferAttribute(g.F, 4)); b.setAttribute('aK', new THREE.Float32BufferAttribute(g.K, 2)); b.setIndex(g.idx); return b; };
-  const geoT = (g) => { const b = new THREE.BufferGeometry(); b.setAttribute('position', new THREE.Float32BufferAttribute(g.pos, 3)); b.setAttribute('normal', new THREE.Float32BufferAttribute(g.nor, 3)); b.setAttribute('color', new THREE.Float32BufferAttribute(g.col, 3)); b.setAttribute('aR', new THREE.Float32BufferAttribute(g.R, 1)); b.setIndex(g.idx); return b; };
+  const geoW = (g) => { const b = new THREE.BufferGeometry(); b.setAttribute('position', new THREE.Float32BufferAttribute(g.pos, 3)); b.setAttribute('normal', new THREE.Float32BufferAttribute(g.nor, 3)); b.setAttribute('color', new THREE.Float32BufferAttribute(g.col, 3)); b.setAttribute('aF', new THREE.Float32BufferAttribute(g.F, 4)); b.setAttribute('aK', new THREE.Float32BufferAttribute(g.K, 2)); b.setIndex(g.idx); return pack(b); };
+  const geoT = (g) => { const b = new THREE.BufferGeometry(); b.setAttribute('position', new THREE.Float32BufferAttribute(g.pos, 3)); b.setAttribute('normal', new THREE.Float32BufferAttribute(g.nor, 3)); b.setAttribute('color', new THREE.Float32BufferAttribute(g.col, 3)); b.setAttribute('aR', new THREE.Float32BufferAttribute(g.R, 1)); b.setIndex(g.idx); return pack(b, 'aR'); };
   const mesh = (geo, m) => { const o = new THREE.Mesh(geo, m); o.castShadow = o.receiveShadow = true; o.matrixAutoUpdate = false; geo.computeBoundingSphere(); root.add(o); return o; };
   const makeBase = (t) => { const w = mk(), r = tr(); for (const o of t.at) raise(o, w, r, null); t.base = [mesh(geoW(w), wall), mesh(geoT(r), trim)]; };
   const makeFine = (t) => { const w = mk(), r = tr(), f = tr(); cumba = []; for (const o of t.at) raise(o, w, r, f); const cw = mk(); for (const [q, y0, y1, c, k, s] of cumba) { walls(cw, q, y0, y1, c, k, s, y0 - 0.42, y1 - y0 + 0.42); } t.fine = []; if (f.idx.length) t.fine.push(mesh(geoT(f), trim)); if (cw.idx.length) t.fine.push(mesh(geoW(cw), wall)); };
@@ -169,7 +170,7 @@ export function buildBuildings(W) {
   // what is near is made, nearest first, a little each frame; what is long out of sight goes
   W.updateBuildings = (cam, far, ms = 3.5) => {
     const t0 = performance.now(), want = []; let made = 0;
-    for (const t of list) { const d = Math.hypot(t.x - cam.x, t.z - cam.z) - TILE * 0.71; t.d = d; const see = d < far; if (t.base) { for (const o of t.base) o.visible = see; if (see) t.used = t0; else if (t0 - t.used > 45000) { drop(t.base); t.base = null; } } else if (see) want.push(t); if (t.fine) { const n = d < 62; for (const o of t.fine) o.visible = n; if (!n && d > 120) { drop(t.fine); t.fine = null; } } }
+    for (const t of list) { const d = Math.hypot(t.x - cam.x, t.z - cam.z) - TILE * 0.71; t.d = d; const see = d < far; if (t.base) { for (const o of t.base) o.visible = see; if (see) t.used = t0; else if (t0 - t.used > 12000) { drop(t.base); t.base = null; } } else if (see) want.push(t); if (t.fine) { const n = d < 62; for (const o of t.fine) o.visible = n; if (!n && d > 120) { drop(t.fine); t.fine = null; } } }
     want.sort((a, b) => a.d - b.d); for (const t of want) { makeBase(t); t.used = t0; made++; if (performance.now() - t0 > ms) return made; }
     let best = null; for (const t of list) if (!t.fine && t.base && t.d < 45 && (!best || t.d < best.d)) best = t; if (best) { makeFine(best); made++; }
     return made;

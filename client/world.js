@@ -10,6 +10,7 @@ import { buildMarks } from './marks.js';
 import { buildBuildings } from './buildings.js';
 import { buildLife } from './life.js';
 import { buildShips } from './ships.js';
+import { pack, Keeper } from './gpu.js';
 import { buildSigns } from './signs.js';
 import { buildSignals } from './signals.js';
 
@@ -20,7 +21,7 @@ export const CHUNK = 64; // grid cells across a piece of ground
 export function buildWorld(scene, A, net, onStage = () => {}) {
   const root = new THREE.Group(); scene.add(root);
   const g = A.map.grid, M0 = A.map.map, { height, coast } = A.ground;
-  const night = { value: 0 }, time = { value: 0 }, W = { mouths: { value: [0, 1].map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, glow: [], spots: [], updates: [], A };
+  const night = { value: 0 }, time = { value: 0 }, W = { keeper: new Keeper(), mouths: { value: [0, 1].map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, glow: [], spots: [], updates: [], A };
   W.lit = (m, color, k) => { m.emissive = new THREE.Color(color); m.emissiveIntensity = 0; W.glow.push([m, k]); return m; };
   W.mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, ...o });
   W.spot = (x, y, z, color, power, reach) => { const l = new THREE.PointLight(color, 0, reach, 1.6); l.position.set(x, y, z); root.add(l); W.spots.push([l, power]); return l; };
@@ -74,7 +75,7 @@ export function buildWorld(scene, A, net, onStage = () => {}) {
       const nx = hAt(i - 1, j) - hAt(i + 1, j), nz = hAt(i, j - 1) - hAt(i, j + 1), l = Math.hypot(nx, 2 * g.step, nz); nor[k] = nx / l; nor[k + 1] = (2 * g.step) / l; nor[k + 2] = nz / l;
       if (a < S - 1 && b < S - 1) { const q = b * S + a; idx.push(q, q + S, q + 1, q + 1, q + S, q + S + 1); }
     }
-    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); geo.setIndex(idx); geo.computeBoundingSphere();
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); geo.setIndex(idx); geo.computeBoundingSphere(); pack(geo);
     const m = new THREE.Mesh(geo, ground); m.receiveShadow = true; m.castShadow = false; m.matrixAutoUpdate = false; return m;
   };
   for (let cj = 0; cj < rows; cj++) for (let ci = 0; ci < cols; ci++) {
@@ -84,12 +85,12 @@ export function buildWorld(scene, A, net, onStage = () => {}) {
   }
   // (all of it coarse, once; the rest when the camera gets there)
   for (const p of pieces) { p.lods[4] = makePiece(p.ci, p.cj, 4); root.add(p.lods[4]); p.now = 4; }
-  W.updateGround = (cam, budget = 2) => {
+  W.updateGround = (cam, budget = 2) => { const now = performance.now();
     for (const p of pieces) {
       const d = Math.max(Math.abs(p.x - cam.x), Math.abs(p.z - cam.z)) - CHUNK * g.step / 2, want = d < 60 ? 1 : d < 190 ? 2 : 4;
-      if (want === p.now) continue;
+      if (want === p.now) { if (p.old && now - p.oldAt > 9000) { p.old.geometry.dispose(); p.old = null; } continue; }
       if (!p.lods[want]) { if (budget-- <= 0) continue; p.lods[want] = makePiece(p.ci, p.cj, want); root.add(p.lods[want]); }
-      p.lods[p.now].visible = false; p.lods[want].visible = true; p.now = want;
+      p.lods[p.now].visible = false; p.old = p.lods[p.now]; p.oldAt = now; p.lods[want].visible = true; p.now = want;
     }
   };
   // the slab the diorama stands on
@@ -208,7 +209,7 @@ export function buildWorld(scene, A, net, onStage = () => {}) {
   lampTex.needsUpdate = true;
 
   W.setNight = (k) => { night.value = k; for (const [m, x] of W.glow) m.emissiveIntensity = k * x; for (const [l, x] of W.spots) l.intensity = k * x; };
-  W.update = (dt, now, cam, far) => { time.value = now / 1000; W.updateGround(cam); W.updateTiles(cam, far); W.updateBuildings(cam, far); for (const u of W.updates) u(dt, now, cam); };
+  W.update = (dt, now, cam, far) => { time.value = now / 1000; W.updateGround(cam); W.keeper.update(now, cam, far); W.updateTiles(cam, far); W.updateBuildings(cam, far); for (const u of W.updates) u(dt, now, cam, far); };
   W.bounds = M0;
   return W;
 }

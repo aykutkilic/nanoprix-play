@@ -4,6 +4,7 @@ import * as THREE from './vendor/three.module.min.js';
 import { SUN_DIR, HAZE, NIGHT_HAZE, QUALITY, Post, FrameWatch, startQuality, makeSky, skyEnvironment, pixelRatio, gfxChoice, setGfxChoice } from './realism.js';
 import { WEATHER } from '../shared/weather.js';
 import { cut } from './weather.js';
+import { forget } from './gpu.js';
 export const CAMS = ['chase', 'near', 'diorama', 'iso', 'top'];
 const DUSK = new THREE.Color().setRGB(0.95, 0.52, 0.30), tmpC = new THREE.Color();
 export class View {
@@ -28,6 +29,15 @@ export class View {
     this.watch = q.fixed ? null : new FrameWatch(q.level, (l) => this.setQuality(l));
     this.setQuality(q.level); this.applyNight(0);
     addEventListener('resize', () => this.resize());
+    // the graphics card may take its context away (too much asked of it, the machine asleep): then all is made anew, on less
+    const cv = r.domElement; cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.lost = true; this.losses = (this.losses || 0) + 1; });
+    cv.addEventListener('webglcontextrestored', () => this.restore());
+  }
+  restore() {
+    forget(this.scene, [this.envSky, this.envNight, this.sun.shadow.map && this.sun.shadow.map.texture, this.sky.material, ...this.post.targets(), ...this.post.materials()]);
+    this.post.main = null; this.post.w = 0; this.sun.shadow.map = null; this.envSky = skyEnvironment(this.renderer, '#27505f'); this.envNight = skyEnvironment(this.renderer, '#0a1420', 1);
+    if (gfxChoice() === 'auto' && this.level !== 'low') this.setQuality(this.level === 'high' ? 'medium' : 'low'); else this.resize();
+    this.light(); this.lost = false; if (this.onRestored) this.onRestored();
   }
   setQuality(level) { this.level = level; this.quality = QUALITY[level]; const n = level === 'low' ? 1024 : level === 'medium' ? 2048 : 3072; this.sun.shadow.mapSize.set(n, n); if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); this.sun.shadow.map = null; } this.far = level === 'low' ? 230 : level === 'medium' ? 340 : 460; this.resize(); }
   chooseQuality(v) { setGfxChoice(v); const q = startQuality(); this.watch = q.fixed ? null : new FrameWatch(q.level, (l) => this.setQuality(l)); this.setQuality(q.level); }
@@ -101,6 +111,7 @@ export class View {
     if (this.camera === this.ortho) cut.dir.value.set(ISO.x, ISO.y, ISO.z).normalize(); else cut.dir.value.copy(this.camera.position).sub(tmpV.set(c.x, c.y, c.z)).normalize();
   }
   render(dt, now) {
+    if (this.lost) return;
     this.sky.position.copy(this.camera.position); this.sky.material.uniforms.uTime.value = now / 1000;
     if (this.world) { const f = Math.min(this.far, this.camera === this.ortho ? 1e3 : 2.9 / this.scene.fog.density); this.world.update(dt, now, this.look || this.camera.position, f); }
     if (this.quality.post) this.post.render(this.scene, this.camera); else { this.renderer.setRenderTarget(null); this.renderer.render(this.scene, this.camera); }

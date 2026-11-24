@@ -32,7 +32,7 @@ export function planSigns(net, marks = []) {
       for (const e of exits) {
         const d = e.r.a === hub ? 1 : -1, o = frame(e.r, d > 0 ? Math.min(9, e.r.len / 2) : e.r.len - Math.min(9, e.r.len / 2), d), vx = o.x - H.x, vz = o.z - H.z, a = wrapA(Math.atan2(In.dx, In.dz) - Math.atan2(vx, vz)); // (right is +)
         if (Math.abs(a) > 2.55) continue;
-        const name = e.r.id === 'bogaz' ? 'Boğaziçi Köprüsü' : e.r.id === 'tup' ? 'Avrasya Tüneli' : e.r.id === 'fsm' ? 'FSM Köprüsü' : e.r.id === 'galata' ? 'Galata Köprüsü' : e.r.id === 'unk2' ? 'Atatürk Köprüsü' : e.r.id === 'd3' ? 'Haliç Köprüsü' : PLACE[far(e.r, e.to)] || e.r.name;
+        const name = e.r.id === 'yss' ? 'Yavuz Sultan Selim Köprüsü' : e.r.id === 'bogaz' ? 'Boğaziçi Köprüsü' : e.r.id === 'tup' ? 'Avrasya Tüneli' : e.r.id === 'fsm' ? 'FSM Köprüsü' : e.r.id === 'galata' ? 'Galata Köprüsü' : e.r.id === 'unk2' ? 'Atatürk Köprüsü' : e.r.id === 'd3' ? 'Haliç Köprüsü' : PLACE[far(e.r, e.to)] || e.r.name;
         const t = st && st.data.turns[`${r.id}>${e.r.id}@${hub}`]; // what the sign there really reads, where OSM has it
         rows.push({ real: !!t, items: t ? t.rows.slice(0, 3) : [{ name }], ref: t && t.ref.length ? t.ref : shield(e.r.id) ? [shield(e.r.id)] : [], a, arrow: Math.abs(a) < 0.5 ? 'up' : a > 0 ? (a > 1.15 ? 'right' : 'upright') : a < -1.15 ? 'left' : 'upleft', name, via: e.r.name, no: shield(e.r.id) });
       }
@@ -71,7 +71,7 @@ export function planSigns(net, marks = []) {
     if (deg === 1) put('plate', r, go(6), dir, { text: PLACE[dir > 0 ? r.a : r.b] || r.name });
     if (exits.length === 0 && r.len > 30) put('deadend', r, at(14), dir);
     // welcome to the other side
-    if (r.id === 'bogaz' || r.id === 'fsm') { put('welcome', r, at(34), dir, { text: dir > 0 ? 'ASYA' : 'AVRUPA' }); }
+    if (r.id === 'bogaz' || r.id === 'fsm' || r.id === 'yss') { put('welcome', r, at(34), dir, { text: dir > 0 ? 'ASYA' : 'AVRUPA' }); }
     // bends and hills ahead
     let last = -99;
     for (let s = 14; s < r.len - 8; s += 1) {

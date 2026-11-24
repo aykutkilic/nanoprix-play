@@ -6,25 +6,29 @@ import { KMH } from './units.js';
 const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 export class Cruiser {
   constructor(net) { this.net = net; this.speed = 8.5; this.obey = true; this.limit = 50; this.want = 0; this.next = null; this.road = null; this.dir = 1; this.out = { steer: 0, gas: 0, brake: 0, drift: false, turbo: false }; this.stuck = 0; this.back = 0; }
-  reset() { this.road = null; this.next = null; }
+  reset() { this.road = null; this.next = null; this.held = null; }
   // the stretch the car is on, remembered so overlapping roads do not confuse it
   locate(car) {
     const n = this.net; let best = null;
     n.around(car.x, car.z, (r, i, t, d, h) => {
-      const dy = Math.abs(h - car.y); if (dy > 1 || d > r.hw + 0.4) return;
-      const a = i * 3, dx = r.p[a + 3] - r.p[a], dz = r.p[a + 4] - r.p[a + 1], l = Math.hypot(dx, dz) || 1, c = (Math.sin(car.yaw) * dx + Math.cos(car.yaw) * dz) / l, score = d + dy * 2 - Math.abs(c) * 0.8 - (r === this.road ? 1.4 : 0) - (this.next && r === this.next.r && this.road && r.s[i] + t < 1e9 && this.left < 2.5 ? 1.0 : 0);
+      const dy = Math.abs(h - car.y), held = r === this.held; if (dy > 1 || d > r.hw + (held ? 2 : 0.4)) return;
+      const a = i * 3, dx = r.p[a + 3] - r.p[a], dz = r.p[a + 4] - r.p[a + 1], l = Math.hypot(dx, dz) || 1, c = (Math.sin(car.yaw) * dx + Math.cos(car.yaw) * dz) / l, score = d + dy * 2 - Math.abs(c) * 0.8 - (held ? 3.5 : 0) - (r === this.road ? 1.4 : 0) - (this.next && r === this.next.r && this.road && r.s[i] + t < 1e9 && this.left < 2.5 ? 1.0 : 0);
       if (!best || score < best.score) best = { r, i, t, d, c, score };
     });
     return best;
   }
   // where the road goes `s` from a position, over junctions; lateral to the right
   ahead(r, dir, s, dist, depth = 0) {
-    const to = s + dir * dist;
-    if (to >= 0 && to <= r.len) { let lo = 0, hi = r.n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (r.s[m] <= to) lo = m; else hi = m; } const a = lo * 3, t = (to - r.s[lo]) / Math.max(1e-6, r.s[lo + 1] - r.s[lo]), dx = (r.p[a + 3] - r.p[a]) * dir, dz = (r.p[a + 4] - r.p[a + 1]) * dir, l = Math.hypot(dx, dz) || 1, lat = Math.max(0.3, r.hw * 0.42); return { x: r.p[a] + (r.p[a + 3] - r.p[a]) * t - (dz / l) * lat, z: r.p[a + 1] + (r.p[a + 4] - r.p[a + 1]) * t + (dx / l) * lat, dx: dx / l, dz: dz / l, r }; }
-    const rest = dist - (dir > 0 ? r.len - s : s), e = depth === 0 ? this.choose(r, dir) : this.pick(r, dir, 0); if (depth > 2) return this.ahead(r, dir, s, dir > 0 ? r.len - s : s, 3);
-    return this.ahead(e.r, e.dir, e.dir > 0 ? 0 : e.r.len, Math.max(0, rest), depth + 1);
+    const to = s + dir * dist, N = this.next, stop = depth === 0 && N && N.from === r && N.fdir === dir && N.at !== undefined ? N.at : dir > 0 ? r.len : 0;
+    if ((dir > 0 ? to <= stop && to >= 0 : to >= stop && to <= r.len)) { let lo = 0, hi = r.n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (r.s[m] <= to) lo = m; else hi = m; } const a = lo * 3, t = (to - r.s[lo]) / Math.max(1e-6, r.s[lo + 1] - r.s[lo]), dx = (r.p[a + 3] - r.p[a]) * dir, dz = (r.p[a + 4] - r.p[a + 1]) * dir, l = Math.hypot(dx, dz) || 1, lat = Math.max(0.3, r.hw * 0.42); return { x: r.p[a] + (r.p[a + 3] - r.p[a]) * t - (dz / l) * lat, z: r.p[a + 1] + (r.p[a + 4] - r.p[a + 1]) * t + (dx / l) * lat, dx: dx / l, dz: dz / l, r }; }
+    const rest = dist - Math.max(0, (stop - s) * dir), e = depth === 0 ? this.choose(r, dir) : this.pick(r, dir, 0); if (depth > 2) return this.ahead(r, dir, s, Math.max(0, (stop - s) * dir), 3);
+    return this.ahead(e.r, e.dir, e.s0 ?? (e.dir > 0 ? 0 : e.r.len), Math.max(0, rest), depth + 1);
   }
   exits(r, dir) {
+    if (r.spur) { // a side street: at its end one turns about, at its beginning there is the road it came off
+      this.net.sides(); const j = dir < 0 && this.net.joint.get(r); if (!j) return []; const In = Math.atan2(r.p[0] - r.p[12 < r.n * 3 ? 12 : 3], r.p[1] - r.p[12 < r.n * 3 ? 13 : 4]), q = j.r, a = Math.min(q.n - 2, j.i) * 3, Y = Math.atan2(q.p[a + 3] - q.p[a], q.p[a + 4] - q.p[a + 1]);
+      return [1, -1].filter((d) => (d > 0 ? q.len - j.s : j.s) > 2).map((d) => ({ r: q, dir: d, a: wrapA(In - (d > 0 ? Y : Y + Math.PI)), s0: j.s }));
+    }
     const hub = dir > 0 ? r.b : r.a, k = dir > 0 ? r.n - 1 : 0, j = dir > 0 ? Math.max(0, r.n - 6) : Math.min(r.n - 1, 5), ix = r.p[k * 3] - r.p[j * 3], iz = r.p[k * 3 + 1] - r.p[j * 3 + 1], In = Math.atan2(ix, iz);
     return this.net.adj.get(hub).filter((e) => e.r !== r).map((e) => { const d = e.r.a === hub ? 1 : -1, p = d > 0 ? 0 : e.r.n - 1, q = d > 0 ? Math.min(e.r.n - 1, 9) : Math.max(0, e.r.n - 10); return { r: e.r, dir: d, a: wrapA(In - Math.atan2(e.r.p[q * 3] - e.r.p[p * 3], e.r.p[q * 3 + 1] - e.r.p[p * 3 + 1])) }; });
   }
@@ -33,20 +37,26 @@ export class Cruiser {
     const score = (e) => (want === 0 ? Math.abs(e.a) - (e.r.style === r.style ? 0.25 : 0) : Math.abs(e.a - want * 1.1) + (Math.sign(e.a) === want ? 0 : 0.5));
     return ex.sort((a, b) => score(a) - score(b))[0];
   }
-  choose(r, dir) { if (!this.next || this.next.from !== r || this.next.fdir !== dir || this.next.want !== this.want) this.next = { ...this.pick(r, dir, this.want), from: r, fdir: dir, want: this.want }; return this.next; }
+  // a side street to turn into, the way asked, before the next junction
+  side(r, dir) {
+    if (!this.want || this.sNow === undefined) return null; const l = this.net.sides().get(r); if (!l) return null; let best = null;
+    for (const o of l) { const d = (o.s - this.sNow) * dir; if (d < 3.2 || d > 45 || o.side * dir !== this.want || o.spur.len < 3) continue; if (!best || d < best.d) best = { d, o }; }
+    if (!best) return null; const i = Math.max(0, r.s.findIndex((v) => v >= best.o.s) - 1), a = i * 3, In = Math.atan2((r.p[a + 3] - r.p[a]) * dir, (r.p[a + 4] - r.p[a + 1]) * dir); return { r: best.o.spur, dir: 1, a: wrapA(In - best.o.yaw), s0: Math.min(r.hw * 0.75, best.o.spur.len * 0.3), at: best.o.s - dir * (best.o.side * dir > 0 ? 0.75 : 0.1) }; // (the corner is cut: into the mouth, not to the middle of the road)
+  }
+  choose(r, dir) { if (!this.next || this.next.from !== r || this.next.fdir !== dir || this.next.want !== this.want) this.next = { ...(this.side(r, dir) || this.pick(r, dir, this.want)), from: r, fdir: dir, want: this.want }; return this.next; }
   // time: the cruise's clock, for the lights
   drive(car, others, dt, time = null, grip = 1) {
     const o = this.out, q = this.locate(car); o.drift = o.turbo = false;
     if (!q) { o.steer = 0; o.gas = 0.3; o.brake = 0; return o; }
-    if (q.r !== this.road) { if (this.next && q.r === this.next.r && this.road === this.next.from) { this.dir = this.next.dir; this.want = 0; } else this.dir = q.c >= 0 ? 1 : -1; this.road = q.r; this.next = null; }
-    const r = this.road, v = Math.max(0, car.speed), s = r.s[q.i] + (r.s[q.i + 1] - r.s[q.i]) * q.t; this.left = this.dir > 0 ? r.len - s : s;
+    if (q.r !== this.road) { if (this.next && q.r === this.next.r && this.road === this.next.from) { this.dir = this.next.dir; this.want = 0; this.held = q.r.spur ? q.r : null; } else this.dir = q.c >= 0 ? 1 : -1; this.road = q.r; this.next = null; }
+    const r = this.road, v = Math.max(0, car.speed), s = r.s[q.i] + (r.s[q.i + 1] - r.s[q.i]) * q.t; this.sNow = s; if (this.held && (r !== this.held || s > 5 || s > r.len * 0.6)) this.held = null; if (this.next && this.next.at !== undefined && (this.next.at - s) * this.dir < -1.6) { this.next = null; this.want = 0; } const end = () => (this.next && this.next.from === this.road && this.next.at !== undefined ? this.next.at : this.dir > 0 ? r.len : 0); this.left = (end() - s) * this.dir;
     if (this.left < 1.2 && this.choose(r, this.dir).uturn) { this.dir = -this.dir; this.next = null; }
-    this.left = this.dir > 0 ? r.len - s : s; const nx = this.choose(r, this.dir); this.turn = nx;
+    const nx = this.choose(r, this.dir); this.left = Math.max(0, (end() - s) * this.dir); this.turn = nx;
     const p = this.ahead(r, this.dir, s, 1.1 + v * 0.3); let a = wrapA(Math.atan2(p.x - car.x, p.z - car.z) - car.yaw); o.steer = Math.max(-1, Math.min(1, -a * 2.4));
     // how fast: as set, less for what is coming
     let vt = this.speed, last = null;
     for (let d = 0; d < 3 + (v * 1.1) / grip; d += 1.6) { const k = this.ahead(r, this.dir, s, d); if (last) { const c = Math.abs(wrapA(Math.atan2(k.dx, k.dz) - last)) / 1.6; if (c > 0.01) vt = Math.min(vt, Math.sqrt((5.5 * grip) / c + Math.max(0, d - 1.6) * 7 * grip)); } last = Math.atan2(k.dx, k.dz); }
-    if (Math.abs(nx.a) > 0.6) vt = Math.min(vt, Math.sqrt((Math.abs(nx.a) > 1.3 ? 7 : 16) + Math.max(0, this.left - 2) * 9));
+    if (nx.at !== undefined) vt = Math.min(vt, Math.sqrt(3.4 + Math.max(0, this.left - 1.6) * 8)); else if (this.held) vt = Math.min(vt, 2.2); else if (Math.abs(nx.a) > 0.6) vt = Math.min(vt, Math.sqrt((Math.abs(nx.a) > 1.3 ? 7 : 16) + Math.max(0, this.left - 2) * 9));
     const st = this.net.streets; this.red = false;
     if (st) {
       this.limit = st.limit(r, s, this.dir); if (this.obey) vt = Math.min(vt, (this.limit / KMH) * (0.4 + 0.6 * grip));

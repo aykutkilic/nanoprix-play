@@ -9,9 +9,10 @@ export const NONE = { value: 0 };
 // what lies between the eye and a car under ground is cut away: `at` the car, `dir` from it to the eye, w: how wide
 export const cut = { at: { value: new THREE.Vector4(0, 0, 0, 0) }, dir: { value: new THREE.Vector3(0, 1, 0) }, cam: { value: new THREE.Matrix4() } };
 export function cutAway(s) { if (s.uniforms.uCutAt) return; s.uniforms.uCutAt = cut.at; s.uniforms.uCutDir = cut.dir; s.uniforms.uCutCam = cut.cam; s.fragmentShader = s.fragmentShader.replace('void main() {', 'uniform vec4 uCutAt; uniform vec3 uCutDir; uniform mat4 uCutCam;\nvoid main() {\n if (uCutAt.w > 0.0) { vec3 cv = (uCutCam * vec4(-vViewPosition, 1.0)).xyz - uCutAt.xyz; float ct = dot(cv, uCutDir); if (ct > 1.2 && cv.y > 1.1 && length(cv - uCutDir * ct) < uCutAt.w * (0.94 + 0.06 * fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5))) discard; }'); }
+let nth = 0;
 // a material that gets wet and white: snow on what looks up, a sheen when wet
 export function weathered(m, { snow = 1, wet = 0.3, shine = 0.35 } = {}) {
-  const was = m.onBeforeCompile;
+  const was = m.onBeforeCompile, key = `weathered ${++nth}`; m.customProgramCacheKey = () => key; // (three.js tells shaders apart by this function's text, which is the same for all)
   m.onBeforeCompile = (s, r) => {
     if (was) was(s, r);
     s.uniforms.uWet = surf.wet; s.uniforms.uSnow = surf.snow; cutAway(s);

@@ -31,7 +31,7 @@ export class Game {
   clear() { if (this.fly) this.fly.stop(true); if (this.nav) { this.nav.stop(); this.nav.hide(); } if (this.nextSign) this.nextSign.update(null); this.trip.clear(); if (this.cabin) this.cabin.leave(); this.view.ride(false); this.aboard = null; this.ferryNote = ''; this.view.aboard = false; if (this.view.world) this.view.world.shipTime = null;
     for (const c of this.cars.values()) this.drop(c);
     if (this.view.world && this.active) this.view.world.A.stream.route(null); this.line0 = null; if (this.view.world && this.view.world.transit) { this.view.world.transit.hold = null; this.view.world.transit.on = true; this.view.world.transit.city = true; }
-    this.cars.clear(); if (this.cv) this.cv.dispose(); this.cv = null; this.course = null; this.me = null; this.active = false; this.hud.course(null); this.audio.quiet(); this.hud.set('big', ''); this.hud.full.hidden = true; this.full = false; this.hud.set('tower', ''); this.hud.set('sec', ''); if (this.input.touchEl) this.input.touchEl.hidden = true;
+    this.cars.clear(); if (this.cv) this.cv.dispose(); this.cv = null; this.course = null; this.me = null; this.active = false; this.hud.course(null); this.audio.quiet(); this.hud.set('big', ''); this.hud.full.hidden = true; this.full = false; this.hud.set('tower', ''); this.hud.set('sec', '');
   }
   addCar(o, mine) {
     const model = makeCarModel(o.car, o.color); this.view.scene.add(model);
@@ -55,7 +55,6 @@ export class Game {
     Object.assign(this, { acc: 0, sent: 0, lapAt: 0, best: 0, finished: 0, wrongT: 0, count: 9, lastLap: 0, auto: null, resetAt: 0, place: 0, active: true, t: -9, safeAt: 0 });
     if (this.free && this.me) { this.me.turbo = 1; this.safe = { x: this.me.x, y: this.me.y, z: this.me.z, yaw: this.me.yaw }; }
     this.hud.course(course); this.view.cam.init = false; this.hud.set('keys', t(this.free ? 'cruiseKeys' : 'controls')); this.hud.keys.style.opacity = 1; clearTimeout(this.kt); this.kt = setTimeout(() => { this.hud.keys.style.opacity = 0; }, this.free ? 14000 : 9000);
-    if (this.input.touchEl) this.input.touchEl.hidden = false;
     const at = this.me || [...this.cars.values()][0]?.st; if (at) this.view.world.prime(at.x, at.z, 150);
   }
   enter(o) { // a car takes its place
@@ -84,7 +83,7 @@ export class Game {
   }
   frame(dt, now) {
     if (!this.active) return;
-    const T = (this.t = this.raceTime()), me = this.me, V = this.view, fly = this.fly && this.fly.on ? this.fly.frame(dt) : null, inp = this.input.read(); this.input.racing = T > 0 && !this.finished; this.input.walking = this.trip.away;
+    const T = (this.t = this.raceTime()), me = this.me, V = this.view, fly = this.fly && this.fly.on ? this.fly.frame(dt) : null, inp = this.input.read(); this.input.context(this.free ? this.trip.mode : 'race', this.auto1);
     // the count
     if (!this.free && !this.watching) { const n = Math.ceil(-T); if (n !== this.count) { if (n >= 1 && n <= 3) { this.hud.flash(String(n), 900); this.audio.beep(false); } else if (n === 0 && this.count === 1) { this.hud.flash(t('go'), 900); this.audio.beep(true); } this.count = n; } }
     // others, as shown and (for touching) as they are now

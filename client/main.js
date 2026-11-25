@@ -94,9 +94,13 @@ addEventListener('pagehide', () => { if (host) host.unlist(); if (link && !host)
 // ---------------------------------------------------------------- screens
 function go(s) { screen = s; hudEl.hidden = s !== 'race'; draw(); }
 const seg = (id, opts, v) => `<div class="row seg" data-seg="${id}">${opts.map(([k, n]) => `<button data-v="${k}" class="${String(k) === String(v) ? 'on' : ''}">${n}</button>`).join('')}</div>`;
-let settingsOpen = false, paused = false;
+let settingsOpen = false, paused = false, drawn = '';
+const nightBtn = () => `<button data-do="night">${view.night > 0.5 ? '☀️' : '🌙'}</button>`, keysHtml = () => (input.touchEl ? '' : `<p class="desc">${t('controls')}</p>`);
 function draw() {
-  const corner = `<div class="corner">${screen === 'race' && game.free && game.mine ? '<button data-do="find">🔎</button>' : ''}<button data-do="cam">🎥</button><button data-do="night">${view.night > 0.5 ? '☀️' : '🌙'}</button><button data-do="settings">⚙</button></div>`;
+  const menu = screen !== 'race' || paused || settingsOpen, at = `${screen}${settingsOpen}${paused}`, top = drawn === at ? $('.panel', ui)?.scrollTop : 0; drawn = at; document.body.classList.toggle('driving', screen === 'race'); input.showTouch(!menu && !!game.me); paint(); if (top) { const p = $('.panel', ui); if (p) p.scrollTop = top; }
+}
+function paint() {
+  const race = screen === 'race', corner = input.touchEl ? (settingsOpen || (race && paused) ? '' : `<div class="corner">${race ? `${game.free && game.mine ? '<button data-do="find">🔎</button>' : ''}<button data-do="cam">🎥</button><button data-do="menu">☰</button>` : `${nightBtn()}<button data-do="settings">⚙</button>`}</div>`) : `<div class="corner">${screen === 'race' && game.free && game.mine ? '<button data-do="find">🔎</button>' : ''}<button data-do="cam">🎥</button>${nightBtn()}<button data-do="settings">⚙</button></div>`;
   if (settingsOpen) { ui.innerHTML = corner + settingsHtml(); return; }
   if (screen === 'home') ui.innerHTML = corner + homeHtml(); else if (screen === 'room') ui.innerHTML = corner + roomHtml(); else if (screen === 'results') ui.innerHTML = corner + resultsHtml(); else ui.innerHTML = corner + (paused ? pauseHtml() : '');
 }
@@ -105,7 +109,7 @@ function homeHtml() { return `<div class="panel"><h1>NANO<span>PRIX</span><small
 const lens = new Map(), lenOf = (c) => { if (!lens.has(c.id)) lens.set(c.id, net.pathRoads(c.hubs).reduce((s, [r]) => s + r.len, 0) / 100); return lens.get(c.id); };
 function roomHtml() {
   if (!room) return ''; const meNow = room.members.find((m) => m.id === myId), S = room.settings, am = room.hostId === myId, cr = S.mode === 'cruise', c = COURSES.find((q) => q.id === S.course), dis = am ? '' : 'style="pointer-events:none;opacity:.85"', on = !!room.code;
-  return `<div class="panel"><div class="row"><h2 class="grow" style="flex:1">${esc(on ? room.name : t('play'))}</h2>${on ? `<span class="code">${room.code}</span>` : ''}</div><div ${dis}>
+  return `<div class="panel"><div class="row"><h2 class="grow" style="flex:1">${esc(on ? room.name : t('play'))}</h2>${on ? `<span class="code">${room.code}</span>` : ''}</div><div class="opts" ${dis}>
   ${seg('mode', [['race', t('raceMode')], ['cruise', t('cruise')]], S.mode)}<div style="height:10px"></div>
   ${cr ? `<p class="desc" style="margin:0">${t('cruiseText')}</p><label>${t('from')}</label><div class="courses">${STARTS.map((q) => `<button data-start="${q}" class="${q === S.start ? 'on' : ''}">${PLACE[q]}</button>`).join('')}</div>` : `<div class="courses">${COURSES.map((q) => `<button data-course="${q.id}" class="${q.id === S.course ? 'on' : ''}">${q.name[lang()]}<small>${lenOf(q).toFixed(1)} ${t('km')}</small></button>`).join('')}</div><p class="desc">${c.text[lang()]}</p>
   <div class="row"><div style="flex:1"><label>${t('laps')}</label>${seg('laps', [1, 2, 3, 5].map((n) => [n, n]), S.laps)}</div><div style="flex:1"><label>${t('reverse')}</label>${seg('reverse', [[false, '→'], [true, '←']], S.reverse)}</div></div>`}
@@ -123,8 +127,8 @@ function resultsHtml() {
   const tab = !st || resTab === 'classification' ? cls : resTab === 'lapTimes' ? lapTable(st, statsMe) : resTab === 'timing' ? board(st, statsMe) : `${gapChart(st, statsMe, { w: 820, h: 260 })}${placeChart(st, statsMe, { w: 820, h: 240 })}`;
   return `<div class="panel center wide"><h2>${t('results')} – ${COURSES.find((c) => c.id === R.course).name[lang()]}</h2>${st ? `<div class="row seg" style="margin-bottom:14px">${['classification', 'lapTimes', 'timing', 'charts'].map((k) => `<button data-tab="${k}" class="${k === resTab ? 'on' : ''}">${t(k)}</button>`).join('')}</div>` : ''}<div class="tabbody">${tab}</div><div class="col"><button class="main" data-do="room">${t('again')}</button></div></div>`;
 }
-function settingsHtml() { return `<div class="panel center"><h2>${t('settings')}</h2><label>${t('graphics')}</label>${seg('gfx', ['auto', 'high', 'medium', 'low'].map((k) => [k, t(k)]), view.gfx)}<label>${t('tilt')}</label>${seg('tilt', [[true, '✓'], [false, '✕']], view.tiltOn)}<label>${t('sound')}</label>${seg('sound', [[true, '✓'], [false, '✕']], audio.on)}<label>${t('music')}</label>${seg('music', [[true, '✓'], [false, '✕']], music.on)}<div class="row"><button class="grow" data-do="track">♪ ${t('nextTrack')}</button></div><label>${t('lang')}</label>${seg('lang', [['tr', 'Türkçe'], ['en', 'English']], lang())}<p class="desc">${t('controls')}</p><div class="col"><button class="main" data-do="settings">${t('resume')}</button></div></div>`; }
-function pauseHtml() { const am = room && room.hostId === myId; return `<div class="panel center"><h2>NANOPRIX</h2><p class="desc">${t('controls')}</p><div class="col"><button class="main" data-do="resume">${t('resume')}</button>${am ? `<button data-do="stop">${t(game.free ? 'again' : 'quit')}</button>` : ''}${room && room.code ? `<button data-do="invite">${t('invite')} · ${room.code}</button>` : host ? `<button data-do="open" ${busy ? 'disabled' : ''}>${busy ? t('opening') : t('openOnline')}</button>` : ''}<button data-do="leave">${t('leave')}</button></div></div>`; }
+function settingsHtml() { return `<div class="panel center opts"><h2>${t('settings')}</h2><label>${t('graphics')}</label>${seg('gfx', ['auto', 'high', 'medium', 'low'].map((k) => [k, t(k)]), view.gfx)}<label>${t('tilt')}</label>${seg('tilt', [[true, '✓'], [false, '✕']], view.tiltOn)}<label>${t('sound')}</label>${seg('sound', [[true, '✓'], [false, '✕']], audio.on)}<label>${t('music')}</label>${seg('music', [[true, '✓'], [false, '✕']], music.on)}<div class="row"><button class="grow" data-do="track">♪ ${t('nextTrack')}</button></div><label>${t('lang')}</label>${seg('lang', [['tr', 'Türkçe'], ['en', 'English']], lang())}${keysHtml()}<div class="col"><button class="main" data-do="settings">${t('resume')}</button></div></div>`; }
+function pauseHtml() { const am = room && room.hostId === myId; return `<div class="panel center"><h2>NANOPRIX</h2>${keysHtml()}<div class="col"><button class="main" data-do="resume">${t('resume')}</button>${input.touchEl ? `<div class="row">${nightBtn()}<button class="grow" data-do="settings">⚙ ${t('settings')}</button></div>` : ''}${am ? `<button data-do="stop">${t(game.free ? 'again' : 'quit')}</button>` : ''}${room && room.code ? `<button data-do="invite">${t('invite')} · ${room.code}</button>` : host ? `<button data-do="open" ${busy ? 'disabled' : ''}>${busy ? t('opening') : t('openOnline')}</button>` : ''}<button data-do="leave">${t('leave')}</button></div></div>`; }
 const set = (o) => link && link.send({ t: 'set', settings: { ...room.settings, ...o } });
 const sendProfile = () => { saveProfile(); if (link && room) link.send({ t: 'profile', profile }); };
 ui.addEventListener('click', async (e) => {
@@ -135,7 +139,7 @@ ui.addEventListener('click', async (e) => {
   switch (d.do) {
     case 'solo': solo(); break; case 'create': create(); break; case 'join': join($('#code').value); break; case 'open': openRoom(); break; case 'leave': paused = false; leave(); break; case 'start': begin(); break;
     case 'ready': { const me = room.members.find((m) => m.id === myId); link.send({ t: 'ready', on: !me.ready }); break; }
-    case 'free': if (link) break; wantCruise = true; solo(); break; case 'room': results = null; go('room'); break; case 'resume': paused = false; draw(); break;
+    case 'free': if (link) break; wantCruise = true; solo(); break; case 'room': results = null; go('room'); break; case 'resume': paused = false; draw(); break; case 'menu': paused = true; draw(); break;
     case 'stop': paused = false; link.send({ t: 'lobby' }); break;
     case 'invite': { const u = `${location.origin}${location.pathname}#${room.code}`; try { await navigator.clipboard.writeText(u); toast(t('copied')); } catch { toast(u, 8000); } break; }
     case 'track': if (!music.on) music.toggle(true); music.next(); draw(); break;

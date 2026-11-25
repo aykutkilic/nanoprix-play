@@ -136,7 +136,7 @@ export function buildBuildings(W) {
   function raise(B, o, w, t, fine) {
     const x = B[o] / 20, z = B[o + 1] / 20, y = B[o + 2] / 400, h = B[o + 3] / 200, kind = B[o + 4] & 255, roof = (B[o + 4] >> 8) & 255, n = B[o + 5] & 255, sd = (B[o + 5] >> 8) & 127, R = rng(sd * 7919 + Math.round(x * 13 + z * 7)), seed = R();
     const q = []; for (let k = 0; k < n; k++) q.push([x + B[o + 6 + k * 2] / 100, z + B[o + 7 + k * 2] / 100]);
-    const f = frameOf(q), pal = PAL[kind], c = pal[Math.floor(R() * pal.length)], top = y + h, foot = y - 0.35, tile = TILES[Math.floor(R() * TILES.length)], small = Math.min(f.w, f.d), flatC = FLAT[Math.floor(R() * FLAT.length)], P = (u, v) => [f.cx + f.ax * u - f.az * v, f.cz + f.az * u + f.ax * v];
+    const f = frameOf(q), pal = PAL[kind], c = pal[Math.floor(R() * pal.length)], top = y + h, foot = Math.min(y - 0.35, ...q.map(([a, b]) => W.height(a, b) - 0.2)), tile = TILES[Math.floor(R() * TILES.length)], small = Math.min(f.w, f.d), flatC = FLAT[Math.floor(R() * FLAT.length)], P = (u, v) => [f.cx + f.ax * u - f.az * v, f.cz + f.az * u + f.ax * v];
     if (kind === K.mosque) {
       const hall = Math.max(0.6, Math.min(h * 0.62, small * 0.75)), r = small * 0.36, s = inset(q, small * 0.04) || q; walls(w, q, foot, y + hall, c, kind, seed, y, hall); parapet(w, t, q, y + hall, 0.06, c, LEAD);
       const dr = y + hall + 0.02, drum = r * 0.34; walls(w, Array.from({ length: 10 }, (_, k) => [f.cx + Math.cos((k / 10) * 6.28319) * r * 1.02, f.cz + Math.sin((k / 10) * 6.28319) * r * 1.02]), dr, dr + drum, c, kind, seed, dr - 0.1, drum + 0.1); dome(t, f.cx, f.cz, dr + drum, r, LEAD, 0.82, 18, 6); tube(t, f.cx, f.cz, dr + drum + r * 0.82, dr + drum + r * 0.82 + 0.22, 0.02, 0.004, GOLD, 5, 3);

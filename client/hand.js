@@ -3,6 +3,7 @@
 // A hand's own space: the wrist at the origin, +z along the fingers, +y its back, the thumb at +x (right) or −x (left);
 // in metres, of somebody 1.75 m tall.
 import * as THREE from './vendor/three.module.min.js';
+import { sharedInteriorResources } from './trim.js';
 const WRIST_Z = 0.0272, LIFE = 0.875;
 const FINGERS = ['Index', 'Middle', 'Ring', 'Little'].map((f) => ['Proximal', 'Intermediate', 'Distal'].map((b) => `${f}_${b}_R`)), THUMB = ['Thumb_Metacarpal_R', 'Thumb_Proximal_R', 'Thumb_Distal_R'];
 // joints bent (rad), index to little; the thumb's about their x and z; at: what is held, so far along the fingers and below the palm
@@ -33,7 +34,7 @@ function bake(pose, side, skin) {
     b.normalize(); a.toArray(pos, i * 3); b.toArray(nor, i * 3); c.copy(base); if (back < -0.3) c.lerp(pale, 0.25); c.lerp(red, Math.max(mix * 0.55, tip * 0.45)); c.toArray(col, i * 3);
   }
   const idx = side < 0 ? M.idx.slice() : M.idx; if (side < 0) for (let k = 0; k < idx.length; k += 3) { const t = idx[k]; idx[k] = idx[k + 1]; idx[k + 1] = t; }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(new THREE.BufferAttribute(idx, 1)); made.set(key, g); return g;
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(new THREE.BufferAttribute(idx, 1)); sharedInteriorResources.add(g); made.set(key, g); return g;
 }
 // side 1 right, −1 left; k: units to the metre; at: a point of what is held; fwd: along the fingers, back: where the back of the hand
 // looks (about square). The wrist is in userData.wrist. (Once hands() has come.)

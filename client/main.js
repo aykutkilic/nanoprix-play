@@ -24,7 +24,7 @@ import { QUICK_RACE, TIME_TRIAL, TRIAL_CAR } from '../shared/events.js';
 import { HostSession, PeerNet, publicPeerRooms } from './p2p.js';
 import { makeCarModel } from './carmodels.js';
 import { t, lang, setLang, err } from './i18n.js';
-import { board, lapTable, gapChart, placeChart, hover } from './statsview.js';
+import { board, lapTable, gapChart, placeChart, hover, clearCharts } from './statsview.js';
 
 const $ = (s, e = document) => e.querySelector(s), ui = $('#ui'), hudEl = $('#hud');
 const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(`nanoprix.${k}`); localStorage.setItem(`nanoprix.${k}`, v); } catch { /* */ } return null; };
@@ -109,7 +109,7 @@ function attach(l) {
         }
         break;
       case 'deadline': if (game.msg) game.msg.endAt = m.endAt; break;
-      case 'finished': game.msg.endAt = m.endAt; game.someoneFinished(m); break;
+      case 'finished': if (game.active) { game.msg.endAt = m.endAt; game.someoneFinished(m); } break;
       case 'car': if (game.active) game.enter(m.car); break;
       case 'gone': game.gone(m.id); break;
       case 'startAt': if (game.msg) game.msg.startAt = m.startAt; break;
@@ -119,7 +119,7 @@ function attach(l) {
         if (game.msg.trial) comparison = recordTrial(store, mine, m.settings);
         if (game.hints && mine?.time) store('learned', '1');
         setTimeout(() => { if (results === m) { raceStats = game.stats; statsMe = myId; resTab = 'classification'; game.clear(); go('results'); } }, game.finished ? 300 : 900); } break;
-      case 'stopped': if (soloEvent) l.send({ t: 'profile', profile }); soloEvent = ''; paused = settingsOpen = journalOpen = false; game.clear(); go('room'); break;
+      case 'stopped': results = null; if (soloEvent) l.send({ t: 'profile', profile }); soloEvent = ''; paused = settingsOpen = journalOpen = false; game.clear(); go('room'); break;
       case 'error': toast(err(m.text)); if (busy && m.text === 'Room not found' && l instanceof Net && joiningCode) { const code = joiningCode; leave(); joinP2p(code); } else if (!l.connected || (!room && busy)) { leave(); } else if (m.kicked || /closed|sent you/.test(m.text)) leave(); break;
       default:
     }
@@ -197,7 +197,11 @@ addEventListener('pageshow', (e) => { if (e.persisted && host) host.relist(); })
 addEventListener('pagehide', () => { if (host) host.unlist(); if (link && !host) { try { link.send({ t: 'leave' }); } catch { /* */ } } });
 
 // ---------------------------------------------------------------- screens
-function go(s) { clearTimeout(directoryTimer); screen = s; hudEl.hidden = s !== 'race'; draw(); }
+function go(s) {
+  if (screen !== s && (screen === 'race' || screen === 'results')) clearCharts();
+  if (s !== 'results') raceStats = null;
+  clearTimeout(directoryTimer); screen = s; hudEl.hidden = s !== 'race'; draw();
+}
 const seg = (id, opts, v) => `<div class="row seg" data-seg="${id}">${opts.map(([k, n]) => `<button data-v="${k}" class="${String(k) === String(v) ? 'on' : ''}">${n}</button>`).join('')}</div>`;
 let comparison = null, directoryTimer, directoryGeneration = 0, rows = [], listStatus = '', directoryTransport = '';
 async function browse() {
@@ -332,7 +336,7 @@ input.on('Escape', () => { if (settingsOpen) settingsOpen = false; else if (jour
 
 // ---------------------------------------------------------------- behind the menus: a slow flight round the course, the car turning in front
 let menuNight = 0, menuCourse = null, menuId = '', shown = null;
-function showCar() { if (shown) view.scene.remove(shown); shown = makeCarModel(profile.car, profile.color); view.scene.add(shown); }
+function showCar() { if (shown) shown.userData.dispose(); shown = makeCarModel(profile.car, profile.color); view.scene.add(shown); }
 showCar();
 const mw = { ...WEATHER.clear };
 function menu(dt, now) {

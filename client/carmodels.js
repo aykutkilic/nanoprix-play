@@ -147,20 +147,29 @@ function contactTex(kind, R, geo) {
 export function makeCarModel(kind, color) {
   const { R, geo, W, fr } = kindOf(kind), g = new THREE.Group(), body = new THREE.Group(); g.add(body);
   const paint = Ph({ color: kind === 'polis' ? '#f4f6f8' : color, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.05, metalness: 0.06, envMapIntensity: 1.15 }), tail = S({ color: '#7a1210', emissive: '#ff2a1a', emissiveIntensity: 0.5, roughness: 0.25 });
+  // Only resources created for this vehicle belong to its teardown.
+  const owned = [paint, tail];
   for (const m in geo) { const o = new THREE.Mesh(geo[m], m === 'paint' ? paint : m === 'tail' ? tail : MAT[m]); o.castShadow = m !== 'clear' && m !== 'amber'; o.receiveShadow = true; body.add(o); }
-  if (kind === 'polis') { const c = Ph({ color, roughness: 0.3, clearcoat: 1 }); const o = new THREE.Mesh(new THREE.BoxGeometry(0.566, 0.02, 0.9), c); o.position.set(0, 0.17, 0); body.add(o); g.userData.siren = R.siren.map((p, i) => { const m = S({ color: i ? '#2a6bff' : '#ff2a2a', emissive: i ? '#2a6bff' : '#ff2a2a', emissiveIntensity: 1 }), s = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.045, 0.075), m); s.position.set(...p); body.add(s); return m; }); }
-  const pm = new THREE.MeshStandardMaterial({ map: plate({ taksi: '34 TAX 34', dolmus: '34 DLM 12', minibus: '34 MIN 87', otobus: '34 HO 500', polis: '34 ZBT 01', simit: '34 SMT 05', spor: '34 GT 1453', klasik: '34 İST 56', suv: '34 SUV 34', limo: '34 VIP 01', kamyon: '34 KMY 88', motor: '34 MTR 7' }[kind] || '34 NP 2026'), roughness: 0.5 }), white = geo.white && geo.white.boundingBox; void white;
+  if (kind === 'polis') { const c = Ph({ color, roughness: 0.3, clearcoat: 1 }); const o = new THREE.Mesh(new THREE.BoxGeometry(0.566, 0.02, 0.9), c); owned.push(o.geometry, c); o.position.set(0, 0.17, 0); body.add(o); g.userData.siren = R.siren.map((p, i) => { const m = S({ color: i ? '#2a6bff' : '#ff2a2a', emissive: i ? '#2a6bff' : '#ff2a2a', emissiveIntensity: 1 }), s = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.045, 0.075), m); owned.push(s.geometry, m); s.position.set(...p); body.add(s); return m; }); }
+  const pm = new THREE.MeshStandardMaterial({ map: plate({ taksi: '34 TAX 34', dolmus: '34 DLM 12', minibus: '34 MIN 87', otobus: '34 HO 500', polis: '34 ZBT 01', simit: '34 SMT 05', spor: '34 GT 1453', klasik: '34 İST 56', suv: '34 SUV 34', limo: '34 VIP 01', kamyon: '34 KMY 88', motor: '34 MTR 7' }[kind] || '34 NP 2026'), roughness: 0.5 });
+  owned.push(pm);
   const zf = { taksi: 0.63, sedan: 0.63, polis: 0.63, hatch: 0.548, suv: 0.618, spor: 0, klasik: 0, dolmus: 0.67, minibus: 0.67, otobus: 1.136, kamyonet: 0.69, limo: 0.89, kamyon: 0.868 }[kind], zb = { taksi: -0.63, sedan: -0.63, polis: -0.63, hatch: -0.538, suv: -0.61, spor: -0.6225, klasik: -0.6405, dolmus: -0.6515, minibus: -0.6515, otobus: -1.1405, kamyonet: -0.6965, simit: -0.5165, limo: -0.89, kamyon: -0.8755 }[kind], yf = { suv: 0.16, otobus: 0.14 }[kind] || 0.13, yb = { suv: 0.26, spor: 0.165, klasik: 0.17, otobus: 0.16, kamyonet: 0.16, simit: 0.23, kamyon: 0.2 }[kind] || 0.2;
-  for (const [z, y, ry] of [[zf, yf, 0], [zb, yb, Math.PI]]) { if (!z) continue; const o = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.034), pm); o.position.set(0, y, z); o.rotation.y = ry; body.add(o); }
+  for (const [z, y, ry] of [[zf, yf, 0], [zb, yb, Math.PI]]) { if (!z) continue; const o = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.034), pm); owned.push(o.geometry); o.position.set(0, y, z); o.rotation.y = ry; body.add(o); }
   const wheels = [];
   // what turns with the bar
   let front = null; if (Object.keys(fr).length) { front = new THREE.Group(); front.position.set(0, 0, R.pivot[0]); body.add(front); for (const m in fr) { const o = new THREE.Mesh(fr[m], m === 'paint' ? paint : MAT[m]); o.position.z = -R.pivot[0]; o.castShadow = m !== 'clear'; o.receiveShadow = true; front.add(o); } }
-  const crank = R.crank ? new THREE.Group() : null; if (crank) { crank.position.set(...R.crank[0]); for (const s of [1, -1]) for (const [geo2, m] of [[box(0.004, R.crank[1], 0.007, s * R.crank[2], (s * R.crank[1]) / 2, 0), MAT.chrome], [box(0.03, 0.007, 0.022, s * (R.crank[2] + 0.014), s * R.crank[1], 0), MAT.black]]) { const o = new THREE.Mesh(geo2, m); o.castShadow = true; crank.add(o); } body.add(crank); }
+  const crank = R.crank ? new THREE.Group() : null; if (crank) { crank.position.set(...R.crank[0]); for (const s of [1, -1]) for (const [geo2, m] of [[box(0.004, R.crank[1], 0.007, s * R.crank[2], (s * R.crank[1]) / 2, 0), MAT.chrome], [box(0.03, 0.007, 0.022, s * (R.crank[2] + 0.014), s * R.crank[1], 0), MAT.black]]) { const o = new THREE.Mesh(geo2, m); owned.push(geo2); o.castShadow = true; crank.add(o); } body.add(crank); }
   for (const [x, z] of R.at) { const piv = new THREE.Group(), own = front && z > 0; piv.position.set(x, R.wr, z - (own ? R.pivot[0] : 0)); (own ? front : R.lean && !R.small ? body : g).add(piv); const w = new THREE.Group(); piv.add(w); for (const [k, m] of [['tyre', MAT.tyre], ['dark', MAT.under], ['rim', MAT[R.rim]], ['white', MAT.white]]) if (W[k]) { const o = new THREE.Mesh(W[k], m); o.castShadow = k === 'tyre'; w.add(o); } wheels.push({ piv, w, front: z > 0 && !own }); }
   let rider = null; if (RIDE[kind]) { rider = makeRider(kind, kind === 'kaykay' ? color : color); body.add(rider); rider.userData.ride(0.016, { steer: 0 }, 0, 0); }
   // from afar: all but the paint and the tail lamps in one piece
   const lod = new THREE.Mesh(lodGeo(kind, geo, W, R, fr), LOD); lod.castShadow = true; lod.visible = false; body.add(lod); const detail = [...body.children.filter((o) => o !== lod && o.material !== paint && o.material !== tail), ...wheels.map((w) => w.piv).filter((o) => o.parent !== body || !body.children.includes(o))].filter((o) => o !== rider);
   const contact = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: contactTex(kind, R, geo), color: '#000000', transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -4 })); contact.scale.set(contactSize.get(kind)[0], 1, contactSize.get(kind)[1]); contact.position.y = 0.008; contact.renderOrder = 1; g.add(contact);
+  owned.push(contact.geometry, contact.material);
+  g.userData.dispose = () => {
+    g.removeFromParent();
+    for (const resource of owned) resource.dispose();
+    rider?.userData.dispose();
+  };
   g.userData = { ...g.userData, body, detail, lod, far: false, contact, wheels, tail, paint, front, crank, rider, lean: R.lean || 0, wr: R.wr, spin: 0, roll: 0, pitch: 0, bob: 0 };
   return g;
 }

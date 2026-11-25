@@ -29,15 +29,20 @@ export class Game {
   constructor({ view, net, hud, audio, fx, input, weather }) { Object.assign(this, { view, net, hud, audio, fx, input, weather }); this.w = {}; this.active = false; this.cars = new Map(); this.override = null; this.trip = new Trip(this); }
 
   // ---------------------------------------------------------------- beginnings
-  clear() { clearTimeout(this.finishRetry); this.outing = null; this.hints = null; this.hud.set('activity', ''); if (this.fly) this.fly.stop(true); if (this.nav) { this.nav.stop(); this.nav.hide(); } if (this.nextSign) this.nextSign.update(null); this.trip.clear(); if (this.cabin) this.cabin.leave(); this.view.ride(false); this.aboard = null; this.ferryNote = ''; this.view.aboard = false; if (this.view.world) this.view.world.shipTime = null;
+  clear() { clearTimeout(this.finishRetry); clearTimeout(this.kt); this.outing = null; this.hints = null; this.hud.set('activity', ''); if (this.fly) this.fly.stop(true); if (this.nav) { this.nav.stop(); this.nav.hide(); } if (this.nextSign) this.nextSign.update(null); this.trip.clear(); if (this.cabin) this.cabin.leave(); this.view.ride(false); this.aboard = null; this.ferryNote = ''; this.view.aboard = false; if (this.view.world) this.view.world.shipTime = null;
     for (const c of this.cars.values()) this.drop(c);
     if (this.view.world && this.active) this.view.world.A.stream.route(null); this.line0 = null; if (this.view.world && this.view.world.transit) { this.view.world.transit.hold = null; this.view.world.transit.on = true; this.view.world.transit.city = true; }
-    this.cars.clear(); if (this.cv) this.cv.dispose(); this.cv = null; this.course = null; this.me = null; this.active = false; this.hud.course(null); this.audio.quiet(); this.hud.set('big', ''); this.hud.full.hidden = true; this.full = false; this.hud.set('tower', ''); this.hud.set('sec', '');
+    this.cars.clear(); if (this.cv) this.cv.dispose(); this.cv = null; this.course = null; this.me = null; this.active = false;
+    this.mine = this.link = this.msg = this.stats = this.pilot = this.traffic = this.simits = null;
+    this.settings = this.card = this.auto = null; this.auto1 = false;
+    this.hud.set('full', '');
+    this.hud.pit(null, performance.now()); this.hud.course(null); this.audio.quiet(); this.hud.set('big', ''); this.hud.full.hidden = true; this.full = false; this.hud.set('tower', ''); this.hud.set('sec', '');
   }
   addCar(o, mine) {
     const model = makeCarModel(o.car, o.color); this.view.scene.add(model);
-    if (!mine) model.add(this.label(o.name, o.color));
-    const c = { ...o, model, mine, st: makeCar(o.car), buf: [], prog: -1e9, done: 0 }; this.cars.set(o.id, c); return c;
+    const label = mine ? null : this.label(o.name, o.color);
+    if (label) model.add(label);
+    const c = { ...o, model, label, mine, st: makeCar(o.car), buf: [], prog: -1e9, done: 0 }; this.cars.set(o.id, c); return c;
   }
   label(text, color) {
     const cv = document.createElement('canvas'); cv.width = 256; cv.height = 56; const g = cv.getContext('2d'); g.font = '800 30px ui-rounded, system-ui, sans-serif'; const w = Math.min(246, g.measureText(text).width + 40); g.fillStyle = 'rgba(10,8,6,.6)'; g.beginPath(); g.roundRect(128 - w / 2, 4, w, 46, 14); g.fill(); g.fillStyle = color; g.beginPath(); g.roundRect(128 - w / 2 + 10, 19, 14, 16, 4); g.fill(); g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.fillText(text, 128 - w / 2 + 31, 28, 205);
@@ -65,7 +70,11 @@ export class Game {
     putOn(c.st, { x: r.p[i * 3] - (dz / l) * lat, z: r.p[i * 3 + 1] + (dx / l) * lat, y: r.p[i * 3 + 2], yaw: Math.atan2(dx, dz) });
   }
   gone(id) { const c = this.cars.get(id); if (!c || c.mine) return; this.drop(c); this.cars.delete(id); }
-  drop(c) { if (c.person) { this.view.scene.remove(c.person); c.person.userData.dispose(); c.person = null; } this.view.scene.remove(c.model); c.model.traverse((o) => { if (o.isSprite) { o.material.map.dispose(); o.material.dispose(); } }); c.model.userData.paint.dispose(); c.model.userData.tail.dispose(); if (c.model.userData.rider) c.model.userData.rider.userData.dispose(); }
+  drop(c) {
+    if (c.person) { this.view.scene.remove(c.person); c.person.userData.dispose(); c.person = null; }
+    if (c.label) { c.label.material.map.dispose(); c.label.material.dispose(); }
+    c.model.userData.dispose();
+  }
   toggleAuto() { if (!this.free || !this.me || this.trip.away) return; this.auto1 = !this.auto1; this.pilot.reset(); this.pilot.obey = true; if (this.auto1) this.pilot.speed = Math.max(5, Math.min(16, Math.abs(this.me.speed) > 3 ? this.me.speed : 8.5)); this.hud.flash(`<small>${t('auto1')} ${this.auto1 ? '✓' : '✕'}</small>`, 1200); }
   poses(b) {
     if (!this.active || b.race !== this.msg.no) return;

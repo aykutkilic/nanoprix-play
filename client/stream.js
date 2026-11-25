@@ -31,6 +31,8 @@ export class Stream {
   async get(t) {
     t.state = 1; this.busy++; t.ctl = new AbortController(); let data = null;
     try { const r = await this.fetcher(new URL(`${t.f}.bin?v=${t.v}`, this.base), { signal: t.ctl.signal }); if (!r.ok) throw new Error(String(r.status)); data = await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer(); } catch (e) { t.state = 0; if (e.name !== 'AbortError') t.tries++; t.after = e.name === 'AbortError' ? 0 : Date.now() + Math.min(20000, 700 * 2 ** t.tries); }
+    // An aborted signal can retain the call stack that requested a new race.
+    t.ctl = null;
     this.busy--; if (data) { t.state = 2; this.bytes += t.n; for (const f of this.hands[t.kind] || []) f(t, data); } for (const w of [...this.waits]) w(); this.pump();
   }
   within(x, z, r) { return this.tiles.filter((t) => t.kind !== 's' && gap(t, x, z) < r * (t.kind === 'd' ? 0.45 : 1)); }

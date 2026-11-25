@@ -7,13 +7,13 @@ async function bytes(n, on) { const r = await fetch(new URL(n, BASE)); if (!r.ok
 const json = async (n, on) => JSON.parse(await new Response(await bytes(n, on)).text());
 const gunzip = async (n, on) => new Response((await bytes(n, on)).pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
 export async function loadAssets(on = () => {}) {
-  const [roads, streets, map, marks, tb, ub, index, ports, shipsBin, transit, lines, entries] = await Promise.all([json('roads.json', on), json('streets.json', on), json('map.json', on), json('landmarks.json', on), gunzip('terrain.bin', on), gunzip('urban.bin', on), json('tiles.json', on), json('ports.json', on), gunzip('ships.bin', on), json('transit.json', on), json('lines.json', on), json('entries.json', on)]); transit.entries = entries.list;
+  const [roads, streets, map, marks, tb, ub, index, ports, shipsBin, transit, lines, entries, squares, squaresBin] = await Promise.all([json('roads.json', on), json('streets.json', on), json('map.json', on), json('landmarks.json', on), gunzip('terrain.bin', on), gunzip('urban.bin', on), json('tiles.json', on), json('ports.json', on), gunzip('ships.bin', on), json('transit.json', on), json('lines.json', on), json('entries.json', on), json('squares.json', on), gunzip('squares.bin', on)]); transit.entries = entries.list;
   // terrain: heights as deltas along the rows, low and high bytes apart
   const { w, h } = map.grid, N = w * h, u = new Uint8Array(tb), H = new Float32Array(N);
   for (let k = 0, v = 0; k < N; k++) { const d = u[k] | (u[N + k] << 8); v = k % w ? (v + d) & 65535 : d; H[k] = v / 400 - 20; }
   const shore = u.slice(N * 2, N * 3), park = u.slice(N * 3, N * 4);
   const stream = new Stream(index, new URL('tiles/', BASE));
-  return { roads, streets, map, ground: makeGround(map.grid, H, shore), H, shore, park, urban: new Uint8Array(ub), landmarks: marks, stream, ports, shipsBin, transit, lines };
+  return { roads, streets, map, ground: makeGround(map.grid, H, shore), H, shore, park, urban: new Uint8Array(ub), landmarks: marks, stream, ports, shipsBin, transit, lines, squares, squaresBin };
 }
 function makeGround(g, H, S) {
   const look = (f, k) => (x, z) => {

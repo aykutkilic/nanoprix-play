@@ -330,7 +330,9 @@ export class HostSession {
     };
     try {
       const src = 'onmessage = (e) => setTimeout(() => postMessage(0), e.data);';
-      this.worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+      const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+      try { this.worker = new Worker(url); }
+      finally { URL.revokeObjectURL(url); }
       this.worker.onmessage = run;
       wake = (ms) => this.worker.postMessage(ms);
     } catch { /* no workers: page timers (throttled in a background tab) */ }

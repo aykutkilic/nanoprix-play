@@ -67,7 +67,7 @@ export class CourseView {
     this.simits.forEach((q, k) => { const near = Math.abs(q.x - car.x) + Math.abs(q.z - car.z) < 160, on = near && now > q.taken; M.compose(P.set(q.x, q.y + 0.42 + Math.sin(now / 300 + k) * 0.06, q.z), Q.setFromAxisAngle(UP, now / 600 + k), S.setScalar(on ? 1 : 0.0001)); this.sm.setMatrixAt(k, M); }); this.sm.instanceMatrix.needsUpdate = true;
     this.near = []; this.traffic.forEach((v, k) => { const o = trafficAt(v, this.course, t, (v.o ||= {})), d = Math.hypot(o.x - car.x, o.z - car.z), m = this.tm[k]; m.visible = d < 170; if (!m.visible) return; lodCar(m, d > 26); m.position.set(o.x, o.y + drawnAt(this.net, o.x, o.z, o.y) - 0.004, o.z); m.rotation.set(-Math.atan(o.slope || 0), o.yaw, 0, 'YXZ'); if (d < 60) animateCar(m, o, Math.min(0.1, (now - (this.was || now)) / 1000) || 0.016, this.night || 0); if (d < 6) this.near.push(o); }); this.was = now;
   }
-  dispose() { if (this.crowd) this.crowd.dispose(); this.g.traverse((o) => o.isInstancedMesh && o.dispose()); this.scene.remove(this.g); for (const d of this.disposables) for (const x of [].concat(d)) { if (x.map) x.map.dispose(); if (x.dispose) x.dispose(); } }
+  dispose() { for (const model of this.tm) model.userData.dispose(); if (this.crowd) this.crowd.dispose(); this.g.traverse((o) => o.isInstancedMesh && o.dispose()); this.scene.remove(this.g); for (const d of this.disposables) for (const x of [].concat(d)) { if (x.map) x.map.dispose(); if (x.dispose) x.dispose(); } }
 }
 
 // Traffic over the whole city, for a cruise: only what is near has a model.
@@ -84,5 +84,5 @@ export class CityView {
     });
     for (const m of this.pool) if (!m.v) m.o.visible = false; this.was = now;
   }
-  dispose() { for (const m of this.pool) this.scene.remove(m.o); this.pool = []; }
+  dispose() { for (const m of this.pool) m.o.userData.dispose(); this.pool = []; }
 }

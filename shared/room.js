@@ -89,7 +89,7 @@ export class Room {
     this.members.delete(client.id);
     if (this.hostId === client.id) this.hostId = this.members.size ? [...this.members.keys()][0] : 0;
     this.broadcast({ t: 'gone', id: client.id });
-    if (this.race) { this.race.out.add(client.id); this.race.grid = this.race.grid.filter((id) => id !== client.id); if (!this.race.cruise) this.checkEnd(); }
+    if (this.race) { this.race.grid = this.race.grid.filter((id) => id !== client.id); if (!this.race.cruise) this.checkEnd(); }
     if (!this.members.size) { this.race = null; this.phase = 'lobby'; }
     this.broadcastRoom();
   }
@@ -130,7 +130,7 @@ export class Room {
     this.bots = Array.from({ length: nb }, (_, k) => ({ id: 60000 + k, name: names[(k + seed) % names.length], car: RACERS[(k * 5 + seed) % RACERS.length].id, color: free[k % free.length] || COLOURS[k % COLOURS.length], bot: true }));
     // the grid: bots ahead, people by their last result reversed, newest last
     const grid = [...this.bots.map((b) => b.id), ...people.sort((a, b) => a.wins - b.wins || Math.sin(seed + a.id) - Math.sin(seed + b.id)).map((m) => m.id)];
-    this.race = { trial, no: this.raceNo, seed, settings: { ...S }, grid, startAt: this.now() + COUNTDOWN, results: new Map(), out: new Set(), endAt: 0, course: this.net && !cruise ? new Course(this.net, def, S.reverse) : null, traffic: [], cruise, wx: { to: S.weather, from: null, at: 0 }, clock: cityStart(Date.now(), S.light) };
+    this.race = { trial, no: this.raceNo, seed, settings: { ...S }, grid, startAt: this.now() + COUNTDOWN, results: new Map(), endAt: 0, course: this.net && !cruise ? new Course(this.net, def, S.reverse) : null, traffic: [], cruise, wx: { to: S.weather, from: null, at: 0 }, clock: cityStart(Date.now(), S.light) };
     if (cruise) this.race.startAt = this.now(); // (nothing to count down to)
     for (const m of this.members.values()) { m.pose = null; m.prog = -1e9; m.ready = false; m.racing = grid.includes(m.id); }
     if (this.race.course) {

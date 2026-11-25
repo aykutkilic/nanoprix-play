@@ -30,6 +30,7 @@ export function board(st, me) {
 export function lapTable(st, me) { const o = st.order(); return `<table class="board"><thead><tr><th>${t('lap')}</th>${o.map((id) => `<th class="${id === me ? 'me' : ''}"><i style="background:${st.cars.get(id).color}"></i> ${esc(code(st.cars.get(id).name))}</th>`).join('')}</tr></thead><tbody>${Array.from({ length: st.laps }, (_, n) => { const best = Math.min(...o.map((id) => st.lap(id, n) || Infinity)); return `<tr><td>${n + 1}</td>${o.map((id) => { const v = st.lap(id, n); return `<td class="${v && st.fastest && v <= st.fastest.time + 1e-9 ? 'pur' : v && v <= best + 1e-9 ? 'grn' : ''}">${s3(v)}</td>`; }).join('')}</tr>`; }).join('')}</tbody></table>`; }
 // ---------------------------------------------------------------- charts
 const models = new Map(); let nth = 0;
+export function clearCharts() { models.clear(); }
 function chart(st, me, rows, { title, flip, yMax, yMin = 0, ticks, fmtY, w = 560, h = 250 }) {
   const id = `ch${nth++ % 12}`, L = 38, R = 58, T = 30, B = 26, X = (lap) => L + (lap / st.laps) * (w - L - R), Y = (v) => (flip ? T + ((v - yMin) / (yMax - yMin)) * (h - T - B) : h - B - ((v - yMin) / (yMax - yMin)) * (h - T - B)), o = st.order();
   models.set(id, { st, rows, X, Y, w, h, T, B, fmtY, o });

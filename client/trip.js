@@ -34,6 +34,7 @@ export class Trip {
     }
     if (best !== null && (on === null || Math.abs(best - y) <= Math.abs(on - y) + 0.12)) return best; if (on !== null) return on;
     if (stage) return Math.max(W.height(x, z), 0.35); // (a landing stage)
+    const square = W.paved ? W.paved(x, z) : null; if (kerb === null && square !== null && Math.abs(square - y) < 0.7) return square; // (a square, a street one walks in)
     if (kerb !== null) { const g = W.height(x, z); return Math.abs(g - kerb) < 0.35 ? Math.max(g, kerb) : kerb; } // (the pavement)
     if (q && q.inside > -1.35 && Math.abs(q.h - y) < 1.4 && W.coast(x, z) > 0.1) { const g = W.height(x, z); if (Math.abs(g - q.h) < 0.6) return g; } // (and the ground beside it, unless it falls away)
     return path > -50 ? (W.coast(x, z) > 0.25 ? W.height(x, z) : path) : null;

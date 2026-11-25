@@ -4,7 +4,7 @@
 import * as THREE from './vendor/three.module.min.js';
 import { isGlass } from './carmodels.js';
 import { rng } from './realism.js';
-import { Parts, LAMP, lit, rider, seat, COATS, SKINS, HAIRS } from './trim.js';
+import { Parts, LAMP, lit, disposeInterior, rider, seat, COATS, SKINS, HAIRS } from './trim.js';
 import { CAR, cockpit, cut } from './cockpit.js';
 import { setGlow } from './dash.js';
 import { Mirror } from './mirror.js';
@@ -78,7 +78,19 @@ export class Cabin {
   clamp() { this.yaw = Math.atan2(Math.sin(this.yaw), Math.cos(this.yaw)); this.pitch = Math.max(-1.1, Math.min(1.1, this.pitch)); }
   // nothing to sit in
   leave() { if (this.key) { this.drop(); this.key = ''; } this.on = false; this.view.cabin = null; const W = this.view.world; if (W) W.inside = null; }
-  drop() { if (this.g) { this.scene.remove(this.g); this.g.traverse((o) => { if (o.geometry && o.parent !== this.display.mesh && o !== this.display.mesh) o.geometry.dispose(); }); this.display.mesh.removeFromParent(); this.g = null; } for (const o of this.glasses) o.visible = true; this.glasses.length = 0; if (this.model) this.model.userData.far = null; this.model = null; this.pit = null; if (this.skin) { this.skin[0].geometry = this.skin[1]; this.skin = null; } if (this.mirror) this.mirror.on = false; }
+  drop() {
+    if (this.g) {
+      this.display.mesh.removeFromParent();
+      disposeInterior(this.g);
+      this.g = null;
+    }
+    for (const o of this.glasses) o.visible = true;
+    this.glasses.length = 0;
+    if (this.model) this.model.userData.far = null;
+    this.model = this.pit = null;
+    if (this.skin) { this.skin[0].geometry = this.skin[1]; this.skin = null; }
+    if (this.mirror) { this.mirror.on = false; this.mirror.hide = []; }
+  }
   enter(key, kind, seats, make) { if (this.key === key) return; this.drop(); this.key = key; this.kind = kind; this.seats = seats; this.n = Math.min(this.picked.get(kind) || 0, seats.length - 1); this.yaw = this.pitch = 0; const r = make(); if (r) { this.g = r; this.scene.add(r); } this.view.cam.init = false; }
   turn() { if (!this.on) return; if (this.flip) this.flip(); else this.nextSeat(); }
   nextSeat() { if (!this.on || this.seats.length < 2) return; this.n = (this.n + 1) % this.seats.length; this.picked.set(this.kind, this.n); this.yaw = this.pitch = 0; }

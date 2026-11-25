@@ -11,6 +11,7 @@ import { buildMarks } from './marks.js';
 import { buildBuildings } from './buildings.js';
 import { buildLife } from './life.js';
 import { buildShips } from './ships.js';
+import { buildSquares } from './squares.js';
 import { pack, Keeper, Still, merge } from './gpu.js';
 import { buildTransit } from './transit.js';
 import { Transit } from '../shared/transit.js';
@@ -72,6 +73,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   // (the coarser ground keeps under the roads as the fine ground does: lowered where a triangle would stand out over one)
   const coarse = {}; { const on = new Uint8Array(g.w * g.h); for (const r of net.roads) for (let i = 0; i < r.n; i++) { if (r.tunnel && r.tunnel[i] === 2) continue; const x = (r.p[i * 3] - g.x0) / g.step, z = (r.p[i * 3 + 1] - g.z0) / g.step, R = (r.hw + 2.9) / g.step; for (let b = Math.max(0, Math.ceil(z - R)); b <= Math.min(g.h - 1, z + R); b++) for (let a = Math.max(0, Math.ceil(x - R)); a <= Math.min(g.w - 1, x + R); a++) if ((a - x) ** 2 + (b - z) ** 2 < R * R) on[b * g.w + a] = 1; }
     for (const d of net.discs) { const x = (d.x - g.x0) / g.step, z = (d.z - g.z0) / g.step, R = (d.r + 2.9) / g.step; for (let b = Math.max(0, Math.ceil(z - R)); b <= Math.min(g.h - 1, z + R); b++) for (let a = Math.max(0, Math.ceil(x - R)); a <= Math.min(g.w - 1, x + R); a++) on[b * g.w + a] = 1; }
+    for (const { rings: [r] } of A.squares.areas) { const xs = r.map((p) => p[0]), zs = r.map((p) => p[1]); for (let b = Math.max(0, Math.floor((Math.min(...zs) - g.z0) / g.step) - 1); b <= Math.min(g.h - 1, (Math.max(...zs) - g.z0) / g.step + 1); b++) for (let a = Math.max(0, Math.floor((Math.min(...xs) - g.x0) / g.step) - 1); a <= Math.min(g.w - 1, (Math.max(...xs) - g.x0) / g.step + 1); a++) { const x = g.x0 + a * g.step, z = g.z0 + b * g.step; let c = false, d = 99; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { if (r[i][1] > z !== r[j][1] > z && x < ((r[j][0] - r[i][0]) * (z - r[i][1])) / (r[j][1] - r[i][1]) + r[i][0]) c = !c; d = Math.min(d, Math.hypot(r[i][0] - x, r[i][1] - z)); } if (c || d < g.step * 1.5) on[b * g.w + a] = 1; } } // (and under the squares)
     const L = []; for (let k = 0; k < on.length; k++) if (on[k]) L.push(k);
     for (const st of [2, 4]) { const w = Math.ceil((g.w - 1) / st) + 1, C = new Float32Array(w * (Math.ceil((g.h - 1) / st) + 1)); for (let k = 0; k < C.length; k++) C[k] = hAt((k % w) * st, Math.floor(k / w) * st); coarse[st] = { w, C };
       for (let pass = 0, more = true; pass < 12 && more; pass++) { more = false; for (const k of L) { const i = k % g.w, j = (k - i) / g.w, a = Math.min(w - 2, Math.floor(i / st)), b = Math.floor(j / st), p = i / st - a, q = j / st - b, c = b * w + a; if (c + w + 1 >= C.length) continue; const low = p + q <= 1, O = low ? c : c + w + 1, u = low ? p : 1 - p, v = low ? q : 1 - q, I = low ? c + 1 : c + w, Q = low ? c + w : c + 1, t = 1 - u - v, e = C[O] * t + C[I] * u + C[Q] * v - A.H[k] - 0.01; if (e > 0) { const s = e / (t * t + u * u + v * v); C[O] -= s * t; C[I] -= s * u; C[Q] -= s * v; more = true; } } } }
@@ -219,7 +221,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   await onStage('city');
 
   buildRoads(W); await onStage('roads');
-  buildMarks(W); await onStage('landmarks');
+  buildMarks(W); buildSquares(W); await onStage('landmarks');
   buildLife(W); await onStage('life'); buildShips(W, A); buildTransit(W); await onStage('ships');
   buildSigns(W); buildSignals(W); await onStage('signs');
   lampTex.needsUpdate = true;

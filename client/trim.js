@@ -21,6 +21,23 @@ export class Parts {
   }
 }
 export const LAMP = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.15, 1.1, 1.0), fog: false });
+// Cabins borrow the trim materials and baked hand meshes across camera changes.
+export const sharedInteriorResources = new WeakSet([trim, metal, pane, LAMP]);
+
+export function disposeInterior(group) {
+  group.removeFromParent();
+  group.userData.disposed = true;
+  const owned = new Set();
+  group.traverse(({ geometry, material }) => {
+    if (geometry && !sharedInteriorResources.has(geometry)) owned.add(geometry);
+    if (material && !sharedInteriorResources.has(material)) {
+      owned.add(material);
+      if (material.map) owned.add(material.map);
+    }
+  });
+  for (const resource of owned) resource.dispose();
+}
+
 export const COATS = ['#32425a', '#7a3b34', '#4d5b3c', '#c9a13a', '#2b2b30', '#8a8f96', '#b7522f', '#5b4a6b'], SKINS = ['#d9a77f', '#c48f68', '#e3b892'], HAIRS = ['#2a1a12', '#15110e', '#5a3a22', '#8a8580'];
 // somebody who sits (or stands) there: seen close to, so with a head and arms
 export function rider(P, x, y, z, yaw, R, sit = true) {

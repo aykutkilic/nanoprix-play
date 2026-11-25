@@ -22,7 +22,7 @@ import { Cruiser, cityTraffic } from '../shared/cruise.js';
 import { Trip } from './trip.js';
 import { makePerson } from './person.js';
 import { t, touch } from './i18n.js';
-import { hm } from '../shared/clock.js';
+import { hm, darkAt, RATE } from '../shared/clock.js';
 import { esc } from './hud.js';
 const DELAY = 0.11, wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 export class Game {
@@ -138,7 +138,8 @@ export class Game {
     // models
     const eye = V.camera === V.ortho ? null : V.camera.position; for (const c of this.cars.values()) { const s = c.st; lodCar(c.model, eye ? (s.x - eye.x) ** 2 + (s.y - eye.y) ** 2 + (s.z - eye.z) ** 2 > 900 : false); c.model.position.set(s.x, s.y + drawnAt(this.net, s.x, s.z, s.y) - 0.004, s.z); if (c.model.userData.contact) { const h = s.air > 0 ? Math.min(1, s.air * 2) : 0; c.model.userData.contact.material.opacity = 0.85 * (1 - h); } c.model.rotation.set(-Math.atan(s.slope || this.slopeOf(s)) * 0.95, s.yaw, 0, 'YXZ'); { const r = c.model.userData.rider; if (r) { const in1 = c.mine && this.cabin && this.cabin.on && this.cabin.model === c.model; r.visible = !(c.mine && this.trip.away) && (!in1 || r.userData.board); r.userData.head.visible = !in1; } } animateCar(c.model, s, dt, V.night); c.model.visible = c.mine || (c.buf.length > 0 && !s.foot) || (T < 1 && !s.foot); if (!c.mine && (s.foot || c.person)) { if (!c.person) { c.person = makePerson(c.color); const l = this.label(c.name, c.color); l.position.y = 0.95; c.person.add(l); this.view.scene.add(c.person); } c.person.visible = !!s.foot; if (s.foot) { c.person.position.set(s.x, s.y, s.z); c.person.rotation.y = s.yaw; c.person.userData.step(dt, Math.hypot(s.vx, s.vz)); } } }
     // light of the day
-    const day = this.free ? 420 : 150, L = this.override !== null ? this.override : this.settings.light === 'night' ? 1 : this.settings.light === 'cycle' ? Math.min(1, Math.max(0, 0.5 - 0.85 * Math.cos(((T + 20) / day) * Math.PI * 2))) : 0;
+    // (a cruise: as late as its clock says; a race has no clock, and a short day)
+    const L = this.override !== null ? this.override : this.settings.light === 'night' ? 1 : this.settings.light !== 'cycle' ? 0 : this.free && this.msg.clock ? darkAt(this.msg.clock.at + Math.max(0, T) * RATE) : Math.min(1, Math.max(0, 0.5 - 0.85 * Math.cos(((T + 20) / 150) * Math.PI * 2)));
     if (Math.abs(V.night - L) > 0.001) V.applyNight(Math.abs(L - V.night) < dt * 0.7 ? L : V.night + Math.sign(L - V.night) * dt * 0.7); setHeadlights(V.night);
     const focus = fly || onFoot || me || this.leader(); if (!focus) return;
     { const u = !fly && !this.trip.away && this.net.under(focus) === 2; this.underK = me ? this.underK : u ? 1 : 0; V.setUnder(u, focus); V.below(fly || this.trip.mode === 'car' ? 0 : this.trip.hall ? 1 : this.trip.pass ? Math.max(0, Math.min(1, (this.trip.passed - 1.4) / Math.max(1, this.trip.pass.entry.run - 1.4))) : this.trip.deep ? 0.6 : 0); V.world.deepNow = !fly && V.deep > 0.9; this.inside(dt, now, T, inp, fly, u); V.aboard = !!this.aboard && !!me; if (this.underK > 0.01) { const k = 1 - this.underK; w.fog *= k; w.rain *= k; w.snowing *= k; w.flash *= k; } }

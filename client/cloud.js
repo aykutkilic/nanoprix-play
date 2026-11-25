@@ -1,6 +1,6 @@
 // The Cloudflare Worker (cloud/): the room list and the cap on people online
 // (its Lobby, see lobby.js). 'self': the game is served by that Worker. Empty:
-// no room list – rooms are joined by code or invite link. `?cloud=<url>` or
+// the public browser uses the peer directory. `?cloud=<url>` or
 // localStorage 'nanoprix.cloud' overrides it for testing.
 //
 // Connecting players (the WebRTC handshake and the relay for networks that
@@ -9,7 +9,7 @@
 // Cloudflare TURN – set up its TURN keys first, see cloud/README.md);
 // `?signal=cloud` / `?signal=peerjs` (kept in localStorage 'nanoprix.signal')
 // overrides it for testing.
-export const CLOUD_URL = ''; // (no Worker deployed for this game yet: rooms by code or invite link)
+export const CLOUD_URL = ''; // Optional Worker integration.
 export const CLOUD_SIGNALLING = false;
 // The room pill's counts (people online, rooms): a file the Lobby rewrites in
 // R2 when they change, read through Cloudflare's cache – never through the

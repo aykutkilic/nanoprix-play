@@ -9,8 +9,8 @@
 //    reached no new rooms open, and hosts turn new guests away until there's
 //    room again.
 //
-// Without the Worker configured (client/cloud.js) there is no list: rooms
-// are joined by code or invite link.
+// These Worker endpoints are optional. Static deployments use peer-directory.js
+// for discovery, and the Node server lists its own rooms.
 
 import { cloudUrl, cloudEndpoint } from './cloud.js';
 

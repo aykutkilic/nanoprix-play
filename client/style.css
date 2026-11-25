@@ -114,3 +114,11 @@ b.tl { font-variant-numeric: tabular-nums; } b.tl.no { color: #ff8a70; } #hud .b
   #hud .road { bottom: 56px; width: calc(100% - 316px); } #hud .ban, #hud:has(.nav:not(:empty)) .ban { left: calc(50% + 51px); top: 98px; max-width: calc(100% - 326px); }
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 350px) { #hud .tw .mode, #hud .trip > p, #hud .trip .ikart p { display: none; } #hud .tower li { height: 16px; } #hud .trip > ul > li:nth-child(n + 4) { display: none; } }
+
+#hud .activity { position: absolute; left: 50%; bottom: 16%; transform: translateX(-50%); max-width: min(72vw, 34rem); padding: .45em .8em; border-radius: .5em; background: #211d17e8; color: white; text-align: center; font-size: clamp(12px, 1.6vw, 17px); }
+#hud .activity:empty { display: none; }
+@media (pointer: coarse) { #hud .activity { bottom: 25%; max-width: 65vw; } }
+.room-list { list-style: none; padding: 0; }
+.room-list button { width: 100%; text-align: left; }
+.room-list small { display: block; }
+.home-actions .row > button { flex: 1; }

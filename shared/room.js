@@ -1,6 +1,7 @@
 // A room: who is in it, what is raced, when it starts and how it ends. Runs
 // wherever the host is – in the hosting player's browser (p2p.js) or on the
 // Node server – and is the same for both.
+import { TIME_TRIAL, TRIAL_SEED, TRIAL_CAR } from './events.js';
 import { cityStart } from './clock.js';
 import { cleanPlayerName, cleanRoomName } from './names.js';
 import { COURSES } from './courses.js';
@@ -30,9 +31,40 @@ export class Room {
     this.onChange = null; this.onKicked = null; this.banned = new Set();
   }
 
+  get localSolo() { return !this.code && this.members.size === 1; }
+
+  pauseSolo(on) {
+    const race = this.race;
+    if (!race) return;
+    const now = this.now();
+    if (on && this.localSolo && race.pausedAt == null) race.pausedAt = now;
+    if (!on && race.pausedAt != null) {
+      const elapsed = now - race.pausedAt;
+      race.startAt += elapsed;
+      race.pausedMs = (race.pausedMs || 0) + elapsed;
+      if (race.endAt) race.endAt += elapsed;
+      for (const member of this.members.values()) if (member.poseAt != null) member.poseAt += elapsed;
+      race.pausedAt = null;
+      this.broadcast({ t: 'startAt', startAt: race.startAt });
+    }
+  }
+
+  openToFriends(code) {
+    this.pauseSolo(false);
+    this.code = code;
+    if (this.race?.results.size && !this.race.endAt) {
+      this.race.endAt = this.now() + AFTER_FIRST;
+      this.broadcast({ t: 'deadline', endAt: this.race.endAt });
+    }
+  }
+
   refusal(who) { return who && this.banned.has(who) ? 'The host sent you out' : ''; }
   broadcast(msg) { const s = JSON.stringify(msg); for (const m of this.members.values()) m.client.sendText(s); }
   broadcastRoom() { for (const m of this.members.values()) m.client.sendText(JSON.stringify(this.view(m.id))); if (this.onChange) this.onChange(); }
+  listing() {
+    return { code: this.code, name: this.name, players: this.members.size, max: MAX_MEMBERS, live: this.phase === 'race', mode: this.settings.mode };
+  }
+
   view(you) {
     return { t: 'room', code: this.code, name: this.name, you, hostId: this.hostId, phase: this.phase, settings: this.settings, max: MAX_MEMBERS, members: [...this.members.values()].map((m) => ({ id: m.id, name: m.name, car: m.car, color: m.color, ready: m.ready, wins: m.wins, watch: !!m.watch })) };
   }
@@ -71,11 +103,11 @@ export class Room {
       case 'ready': m.ready = !!msg.on; this.broadcastRoom(); break;
       case 'set': if (host && this.phase === 'lobby') { this.set(msg.settings); this.broadcastRoom(); } break;
       case 'name': if (host) { this.name = cleanRoomName(String(msg.name || '')) || this.name; this.broadcastRoom(); } break;
-      case 'start': if (host && this.phase === 'lobby') this.start(); break;
+      case 'start': if (host && this.phase === 'lobby') this.start(msg.trial === true && this.localSolo); break;
       case 'finish': this.finish(m, msg); break;
       // (alone in a cruise one may let the time run on, waiting for a bus)
       case 'skip': if (this.race && this.race.cruise && this.members.size === 1) { this.race.startAt -= Math.max(0, Math.min(1500, Number(msg.ms) || 0)); this.broadcast({ t: 'startAt', startAt: this.race.startAt }); } break;
-      case 'weather': if (host && CHOICES.includes(msg.weather)) { // the host may turn the weather at any time
+      case 'weather': if (host && !this.race?.trial && CHOICES.includes(msg.weather)) { // the host may turn the weather at any time
         this.settings = { ...this.settings, weather: msg.weather }; const R = this.race; if (R) { R.settings.weather = msg.weather; R.wx = { to: msg.weather, from: R.wx.to, at: (this.now() - R.startAt) / 1000 }; this.broadcast({ t: 'weather', wx: R.wx }); } else this.broadcastRoom(); } break;
       case 'lobby': if (host && this.phase !== 'lobby') this.toLobby(); break;
       case 'kick': if (host && msg.id !== this.hostId) { const k = this.members.get(msg.id); if (k) { if (k.client.who) this.banned.add(k.client.who); k.client.sendText(JSON.stringify({ t: 'error', text: 'The host sent you out', kicked: true })); if (this.onKicked) this.onKicked(k.client); else this.leave(k.client); } } break;
@@ -89,15 +121,16 @@ export class Room {
     this.settings = { mode: s.mode === 'cruise' || s.mode === 'race' ? s.mode : o.mode, start: STARTS.includes(s.start) ? s.start : o.start, course: c ? c.id : o.course, laps: int(s.laps, 1, 9, c && c.id !== o.course ? c.laps : o.laps), reverse: typeof s.reverse === 'boolean' ? s.reverse : o.reverse, weather: CHOICES.includes(s.weather) ? s.weather : o.weather, light: ['day', 'night', 'cycle'].includes(s.light) ? s.light : o.light, traffic: int(s.traffic, 0, 2, o.traffic), bots: int(s.bots, 0, GRID - 1, o.bots), level: int(s.level, 0, 2, o.level) };
   }
 
-  start() {
-    const S = this.settings, def = COURSES.find((c) => c.id === S.course), all = [...this.members.values()], cruise = S.mode === 'cruise', drivers = all.filter((m) => !m.watch), people = cruise && !drivers.length ? all : drivers, nb = cruise ? 0 : Math.max(people.length ? 0 : 3, Math.min(S.bots, GRID - people.length)); // (somebody has to drive)
-    const taken = new Set(people.map((m) => m.color)), names = BOT_NAMES.filter((n) => !people.some((m) => m.name === n)), seed = Math.floor(Math.random() * 1e9);
+  start(trial = false) {
+    const S = trial ? { ...this.settings, ...TIME_TRIAL, course: this.settings.course, reverse: this.settings.reverse } : this.settings;
+    const def = COURSES.find((c) => c.id === S.course), all = [...this.members.values()], cruise = S.mode === 'cruise', drivers = all.filter((m) => !m.watch), people = cruise && !drivers.length ? all : drivers, nb = cruise ? 0 : Math.max(people.length ? 0 : 3, Math.min(S.bots, GRID - people.length)); // (somebody has to drive)
+    const taken = new Set(people.map((m) => m.color)), names = BOT_NAMES.filter((n) => !people.some((m) => m.name === n)), seed = trial ? TRIAL_SEED : Math.floor(Math.random() * 1e9);
     const free = COLOURS.filter((c) => !taken.has(c));
     this.raceNo = (this.raceNo + 1) & 255;
     this.bots = Array.from({ length: nb }, (_, k) => ({ id: 60000 + k, name: names[(k + seed) % names.length], car: RACERS[(k * 5 + seed) % RACERS.length].id, color: free[k % free.length] || COLOURS[k % COLOURS.length], bot: true }));
     // the grid: bots ahead, people by their last result reversed, newest last
     const grid = [...this.bots.map((b) => b.id), ...people.sort((a, b) => a.wins - b.wins || Math.sin(seed + a.id) - Math.sin(seed + b.id)).map((m) => m.id)];
-    this.race = { no: this.raceNo, seed, settings: { ...S }, grid, startAt: this.now() + COUNTDOWN, results: new Map(), out: new Set(), endAt: 0, course: this.net && !cruise ? new Course(this.net, def, S.reverse) : null, traffic: [], cruise, wx: { to: S.weather, from: null, at: 0 }, clock: cityStart(Date.now(), S.light) };
+    this.race = { trial, no: this.raceNo, seed, settings: { ...S }, grid, startAt: this.now() + COUNTDOWN, results: new Map(), out: new Set(), endAt: 0, course: this.net && !cruise ? new Course(this.net, def, S.reverse) : null, traffic: [], cruise, wx: { to: S.weather, from: null, at: 0 }, clock: cityStart(Date.now(), S.light) };
     if (cruise) this.race.startAt = this.now(); // (nothing to count down to)
     for (const m of this.members.values()) { m.pose = null; m.prog = -1e9; m.ready = false; m.racing = grid.includes(m.id); }
     if (this.race.course) {
@@ -111,7 +144,7 @@ export class Room {
 
   raceMsg() {
     const R = this.race, who = (id) => this.members.get(id) || this.bots.find((b) => b.id === id);
-    return { t: 'race', no: R.no, seed: R.seed, settings: R.settings, wx: R.wx, clock: R.clock, startAt: R.startAt, cars: R.grid.map((id, slot) => { const m = who(id); return m && { id, slot, name: m.name, car: m.car, color: m.color, bot: !!m.bot }; }).filter(Boolean) };
+    return { t: 'race', trial: R.trial, endAt: R.endAt, no: R.no, seed: R.seed, settings: R.settings, wx: R.wx, clock: R.clock, startAt: R.startAt, cars: R.grid.map((id, slot) => { const m = who(id); return m && { id, slot, name: m.name, car: R.trial ? TRIAL_CAR : m.car, color: m.color, bot: !!m.bot }; }).filter(Boolean) };
   }
 
   onPose(m, dv) {
@@ -134,22 +167,28 @@ export class Room {
   record(id, time, best) {
     const R = this.race; if (R.results.has(id)) return;
     R.results.set(id, { id, time, best });
-    if (R.results.size === 1 || !R.endAt) R.endAt = this.now() + AFTER_FIRST;
-    this.broadcast({ t: 'finished', id, time, place: R.results.size });
+    if (!this.localSolo && !R.endAt) R.endAt = this.now() + AFTER_FIRST;
+    this.broadcast({ t: 'finished', id, time, endAt: R.endAt, place: R.results.size });
     this.checkEnd();
   }
 
   checkEnd() {
     const R = this.race; if (!R) return;
     const people = [...this.members.values()].filter((m) => m.racing), all = people.length ? people.every((m) => R.results.has(m.id)) : !R.cruise && this.bots.length && this.bots.every((b) => R.results.has(b.id));
-    if (all) R.endAt = Math.min(R.endAt || Infinity, this.now() + (this.bots.every((b) => R.results.has(b.id)) ? RESULTS_MIN : 6000));
+    if (all) {
+      const endAt = Math.min(R.endAt || Infinity, this.now() + (this.bots.every((b) => R.results.has(b.id)) ? RESULTS_MIN : 6000));
+      if (endAt !== R.endAt) {
+        R.endAt = endAt;
+        if (!this.localSolo) this.broadcast({ t: 'deadline', endAt });
+      }
+    }
   }
 
   end() {
     const R = this.race, who = (id) => this.members.get(id) || this.bots.find((b) => b.id === id);
     const prog = (id) => { const m = this.members.get(id); if (m) return m.prog; const b = this.bots.find((q) => q.id === id); return b && b.c ? b.c.prog : -1e9; };
     const order = [...R.results.values()].sort((a, b) => a.time - b.time), rest = R.grid.filter((id) => !R.results.has(id) && who(id)).sort((a, b) => prog(b) - prog(a));
-    const list = [...order, ...rest.map((id) => ({ id, time: 0, best: 0 }))].map((r, i) => { const m = who(r.id); return m && { ...r, place: i + 1, name: m.name, color: m.color, car: m.car, bot: !!m.bot }; }).filter(Boolean);
+    const list = [...order, ...rest.map((id) => ({ id, time: 0, best: 0 }))].map((r, i) => { const m = who(r.id); return m && { ...r, place: i + 1, name: m.name, color: m.color, car: R.trial ? TRIAL_CAR : m.car, bot: !!m.bot }; }).filter(Boolean);
     const first = list[0] && this.members.get(list[0].id); if (first && list[0].time) first.wins++;
     this.lastResults = { t: 'results', course: R.settings.course, settings: R.settings, list };
     this.race = null; this.phase = 'lobby'; for (const m of this.members.values()) m.racing = false;
@@ -160,7 +199,7 @@ export class Room {
 
   tick() {
     this.ticks++;
-    const R = this.race; if (!R) return;
+    const R = this.race; if (!R || R.pausedAt != null) return;
     const now = this.now(), t = (now - R.startAt) / 1000;
     if (R.course && this.bots.length) {
       const cars = [...this.bots.map((b) => b.c)], people = [];
@@ -194,6 +233,6 @@ export class Room {
     if (R.cruise) return; // (until the host ends it)
     if (R.endAt && now >= R.endAt) this.end();
     // (nobody finishing at all: an abandoned race does not run for ever)
-    else if (R.course && t > 60 + (R.course.len * R.settings.laps) / 4) this.end();
+    else if (!this.localSolo && !R.endAt && R.course && t > 60 + (R.course.len * R.settings.laps) / 4) this.end();
   }
 }

@@ -5,7 +5,7 @@ export class Input {
   constructor(el) {
     this.keys = new Set(); this.handlers = {}; this.touch = { steer: 0, gas: 0, brake: 0, drift: false, turbo: false }; this.out = { steer: 0, gas: 0, brake: 0, drift: false, turbo: false, horn: false, back: false };
     const typing = (e) => /INPUT|TEXTAREA|SELECT/.test(e.target.tagName);
-    addEventListener('keydown', (e) => { if (typing(e)) return; if (/^(Arrow|Space)/.test(e.code) && document.activeElement?.tagName !== 'BUTTON') e.preventDefault(); if (!e.repeat) { if (!e.metaKey) this.keys.add(e.code); const h = this.flying && !FLYING.test(e.code) ? null : this.handlers[e.code]; if (h) h(e); } });
+    addEventListener('keydown', (e) => { if (typing(e) || (this.menu && e.code !== 'Escape')) return; if (/^(Arrow|Space)/.test(e.code) && document.activeElement?.tagName !== 'BUTTON') e.preventDefault(); if (!e.repeat) { if (!e.metaKey) this.keys.add(e.code); const h = this.flying && !FLYING.test(e.code) ? null : this.handlers[e.code]; if (h) h(e); } });
     addEventListener('keyup', (e) => { if (/^Meta/.test(e.code)) this.keys.clear(); else this.keys.delete(e.code); }); /* (a Mac does not say what is let go of while ⌘ is down) */ addEventListener('blur', () => this.keys.clear());
     if (touch) this.buildTouch(el);
   }
@@ -45,7 +45,8 @@ export class Input {
     const k = this.keys, o = this.out, has = (...c) => c.some((x) => k.has(x));
     let s = (has('ArrowRight', 'KeyD') ? 1 : 0) - (has('ArrowLeft', 'KeyA') ? 1 : 0), g = has('ArrowUp', 'KeyW') ? 1 : 0, b = has('ArrowDown', 'KeyS') ? 1 : 0, d = has('Space'), t = has('ShiftLeft', 'ShiftRight'), h = has('KeyH'), back = has('KeyB');
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
-    for (const p of pads) { const a = p.axes[0] || 0; if (Math.abs(a) > 0.12) s = Math.sign(a) * ((Math.abs(a) - 0.12) / 0.88) ** 1.4; const B = (i) => (p.buttons[i] ? p.buttons[i].value : 0); g = Math.max(g, B(7), B(0)); b = Math.max(b, B(6), B(1)); d = d || B(5) > 0.5 || B(2) > 0.5; t = t || B(4) > 0.5; h = h || B(3) > 0.5; if (B(10) > 0.5 && !this._fo && this.handlers.KeyE) this.handlers.KeyE(); this._fo = B(10) > 0.5; if (B(8) > 0.5 && !this._se && this.handlers.KeyG) this.handlers.KeyG(); this._se = B(8) > 0.5; if (B(9) > 0.5 && !this._st && this.handlers.Escape) this.handlers.Escape(); this._st = B(9) > 0.5; }
+    for (const p of pads) { const a = p.axes[0] || 0; if (Math.abs(a) > 0.12) s = Math.sign(a) * ((Math.abs(a) - 0.12) / 0.88) ** 1.4; const B = (i) => (p.buttons[i] ? p.buttons[i].value : 0); g = Math.max(g, B(7), B(0)); b = Math.max(b, B(6), B(1)); d = d || B(5) > 0.5 || B(2) > 0.5; t = t || B(4) > 0.5; h = h || B(3) > 0.5; if (!this.menu && B(10) > 0.5 && !this._fo && this.handlers.KeyE) this.handlers.KeyE(); this._fo = B(10) > 0.5; if (!this.menu && B(8) > 0.5 && !this._se && this.handlers.KeyG) this.handlers.KeyG(); this._se = B(8) > 0.5; if (B(9) > 0.5 && !this._st && this.handlers.Escape) this.handlers.Escape(); this._st = B(9) > 0.5; }
+    if (this.menu) return Object.assign(o, { steer: 0, gas: 0, brake: 0, drift: false, turbo: false, horn: false, back: false });
     if (this.touchEl) { const q = this.touch; if (Math.abs(q.steer) > 0.02) s = q.steer; g = Math.max(g, q.gas); b = Math.max(b, q.brake); d = d || q.drift; t = t || q.turbo; h = h || !!q.horn; back = back || !!q.back; }
     o.steer = s; o.gas = g; o.brake = b; o.drift = d; o.turbo = t; o.horn = h; o.back = back; return o;
   }

@@ -1,5 +1,22 @@
 // Türkçe and English.
 const T = {
+  quick: ['Hızlı yarış', 'Quick Race'], custom: ['Özel yarış', 'Custom Race'], trial: ['Zamana karşı', 'Time Trial'], retry: ['Tekrar yarış', 'Race again'],
+  garage: ['Garaj', 'Garage'], back: ['Geri', 'Back'], personal: ['Kişisel rekor', 'Personal best'], faster: ['daha hızlı', 'faster'], slower: ['daha yavaş', 'slower'], tied: ['Rekorla aynı süre', 'Matched your best'],
+  journal: ['Gezi defteri', 'City journal'], outings: ['Geziler', 'Outings'], startOuting: ['Geziye başla', 'Start outing'],
+  outingDesc: ['Sirkeci iskelesine sür ve arabalı vapurla Harem’e geç.', 'Drive to Sirkeci pier and take the car ferry to Harem.'],
+  journalEmpty: ['Seyirde gördüğün yapılar burada birikir.', 'Landmarks you discover while cruising appear here.'],
+  drivePier: ['Sirkeci arabalı vapur iskelesine sür', 'Follow the route to Sirkeci car ferry pier'],
+  boardCar: ['Binmek için aracını rampanın ucuna sür', 'Drive to the end of the ramp to board'],
+  boardFoot: ['Vapurun yanında binme düğmesine bas', 'Use the boarding control beside the ferry'],
+  waitPier: ['Sirkeci rampasında Harem vapurunu bekle', 'Wait at the Sirkeci ramp for the Harem ferry'],
+  crossing: ['Harem’de in', 'Disembark at Harem'], outingDone: ['Harem’e vardın · Gezi defterine eklendi', 'Arrived at Harem · Outing saved to your journal'],
+  steerHint: ['↑ gaz · ← → yön', 'Hold ↑ to accelerate · Steer with ← →'], steerHintTouch: ['▲ gaz · sol ped yön', 'Hold ▲ to accelerate · Steer with the left pad'],
+  driftHint: ['Virajda dönerken Boşluk ile kay', 'Hold Space while steering into this bend to drift'], driftHintTouch: ['Virajda dönerken ↷ ile kay', 'Hold ↷ while steering into this bend to drift'],
+  boostHint: ['Gaz verirken Shift ile turboyu kullan', 'Hold Shift while accelerating to use your turbo'], boostHintTouch: ['⚡ ile turboyu kullan', 'Hold ⚡ to use your turbo'],
+  publicRooms: ['Açık odalar', 'Public rooms'], hostPublic: ['Herkese açık oda oluştur', 'Host a public room'], refresh: ['Yenile', 'Refresh'],
+  noRooms: ['Şu anda açık oda yok.', 'No public rooms right now.'], directoryError: ['Oda listesine ulaşılamadı.', 'Could not reach the room list.'], looking: ['Odalar aranıyor…', 'Looking for rooms…'],
+  liveRace: ['Yarış sürüyor · izle', 'Racing · spectate'], liveCruise: ['Seyir sürüyor · katıl', 'Cruising · join'], lobby: ['Başlamadı', 'In lobby'], finishWindow: ['Bitişe kalan', 'Finish window'],
+
   tagline: ['Oyuncak arabalarla İstanbul turu', 'Toy cars round İstanbul'], play: ['Yarış', 'Race'], solo: ['Tek başına', 'Solo'], create: ['Oda aç', 'Create room'], join: ['Katıl', 'Join'], code: ['Oda kodu', 'Room code'], name: ['Adın', 'Your name'], car: ['Araba', 'Car'], color: ['Renk', 'Colour'],
   course: ['Parkur', 'Course'], laps: ['Tur', 'Laps'], reverse: ['Ters yön', 'Reversed'], light: ['Işık', 'Light'], weather: ['Hava', 'Weather'], w_clear: ['Açık', 'Clear'], w_rain: ['Yağmur', 'Rain'], w_fog: ['Sis', 'Fog'], w_snow: ['Kar', 'Snow'], w_storm: ['Fırtına', 'Storm'], w_changing: ['Değişken', 'Changing'], day: ['Gündüz', 'Day'], night: ['Gece', 'Night'], cycle: ['Gün döngüsü', 'Day cycle'], traffic: ['Trafik', 'Traffic'], t0: ['Yok', 'None'], t1: ['Az', 'Light'], t2: ['İstanbul', 'İstanbul'], bots: ['Bilgisayar', 'Bots'], level: ['Zorluk', 'Level'], l0: ['Kolay', 'Easy'], l1: ['Normal', 'Normal'], l2: ['Zor', 'Hard'],
   start: ['Başlat', 'Start'], comes: ['Şehir geliyor…', 'The city is coming…'], waiting: ['Oda sahibi başlatınca yarış başlar', 'The host starts the race'], ready: ['Hazırım', 'Ready'], invite: ['Davet linkini kopyala', 'Copy invite link'], copied: ['Kopyalandı', 'Copied'], leave: ['Ayrıl', 'Leave'], opening: ['Oda açılıyor…', 'Opening the room…'], joining: ['Bağlanıyor…', 'Connecting…'], loading: ['Şehir kuruluyor…', 'Building the city…'], lp_land: ['Kara', 'Land'], lp_sea: ['Deniz', 'Sea'], lp_city: ['Mahalleler', 'Quarters'], lp_roads: ['Yollar', 'Roads'], lp_marks: ['Yapılar', 'Landmarks'], lp_ships: ['Vapurlar', 'Ferries'], lp_signs: ['Tabelalar', 'Signs'], ld_land: ['Yedi tepe yükseliyor…', 'The hills rise…'], ld_sea: ['Boğaz doluyor…', 'The Bosphorus fills…'], ld_city: ['Evler diziliyor…', 'The houses go up…'], ld_roads: ['Yollar çiziliyor…', 'The roads are drawn…'], ld_marks: ['Saraylar, camiler, kuleler…', 'Palaces, mosques, towers…'], ld_ships: ['Vapurlar kalkıyor…', 'The ferries set out…'], ld_signs: ['Tabelalar asılıyor…', 'The signs go up…'],

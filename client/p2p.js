@@ -28,6 +28,7 @@ import { Room, sanitizeProfile, MAX_MEMBERS } from '../shared/room.js';
 import { cleanRoomName } from '../shared/names.js';
 import { MSG, TICK_RATE, encodePong } from '../shared/protocol.js';
 import { signallingUrl, cloudEndpoint } from './cloud.js';
+import { PublicListing, readPeerRooms } from './peer-directory.js';
 import { LobbyLink } from './lobby.js';
 
 const PEERJS_URL = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js';
@@ -85,10 +86,14 @@ async function openPeer(Peer, id) {
   return new Promise((resolve, reject) => {
     const peer = new Peer(id, opts);
     const timer = setTimeout(() => { peer.destroy(); reject(Object.assign(new Error('signalling timeout'), { type: 'timeout' })); }, 12000);
-    peer.once('open', () => { clearTimeout(timer); resolve(peer); });
-    peer.once('error', (e) => { clearTimeout(timer); peer.destroy(); reject(e); });
+    const failed = (error) => { clearTimeout(timer); peer.destroy(); reject(error); };
+    peer.once('error', failed);
+    peer.once('open', () => { clearTimeout(timer); peer.off('error', failed); resolve(peer); });
   });
 }
+
+const directoryPeer = async (id) => openPeer(await loadPeer(), id);
+export const publicPeerRooms = () => readPeerRooms(directoryPeer);
 
 function openGameChannel(pc, onMessage) {
   const dc = pc.createDataChannel('game', GAME_CHANNEL);
@@ -183,8 +188,9 @@ export class HostSession {
       }
     } catch (e) { err = e; }
     if (!this.peer) { lobby.close(); throw err || new Error('could not open a room'); }
+    if (this.closed) { this.peer.destroy(); lobby.close(); throw new Error('Room closed'); }
     this.attachPeer(this.peer);
-    this.room.code = this.code;
+    this.room.openToFriends(this.code);
     if (roomName) this.room.name = cleanName(roomName);
     this.lobby = lobby;
     this.room.onChange = () => this.announce();
@@ -216,7 +222,7 @@ export class HostSession {
       const peer = await openPeer(await loadPeer(), PEER_PREFIX + this.code);
       if (this.closed || !this.code || !this.peer || !this.peer.destroyed) { peer.destroy(); return; }
       this.attachPeer(peer);
-      this.announce();
+      this.setAccess(this.access, this.pass);
     } catch { /* not yet (the broker may still hold the old one): the clock tries again */ }
     finally { this.reopening = false; }
   }
@@ -226,22 +232,33 @@ export class HostSession {
   setAccess(access, pass = '') {
     const was = this.access;
     pass = cleanPass(pass);
-    this.access = access === 'private' || (access === 'password' && pass) ? access : 'public';
+    this.access = access === 'unlisted' ? 'unlisted' : access === 'private' || (access === 'password' && pass) ? access : 'public';
     this.pass = this.access === 'password' ? pass : this.access === 'private' ? (was === 'private' && this.pass) || newKey() : '';
+    this.publicListing?.close();
+    this.publicListing = null;
+    this.syncPublicListing();
     this.room.broadcastRoom();
   }
 
   // the room's line in the room list (sent only when it changed; a private
   // room only counts its people)
+  syncPublicListing() {
+    const available = this.access === 'public' && this.peer && this.reachable && !this.closed;
+    if (!available) { this.publicListing?.close(); this.publicListing = null; }
+    else if (!this.publicListing) this.publicListing = new PublicListing(directoryPeer, this.peer, () => this.room.listing());
+  }
+
   announce() {
     const r = this.room;
     if (!this.lobby || !this.code) return;
-    const hidden = this.access === 'private' || this.reachable === false;
-    this.lobby.update({ code: this.code, name: hidden ? '' : r.name, players: r.members.size, max: MAX_MEMBERS, locked: this.access === 'password', live: r.phase === 'race', hidden });
+    this.syncPublicListing(); this.publicListing?.update();
+    const hidden = this.access === 'private' || this.access === 'unlisted' || this.reachable === false;
+    this.lobby.update({ mode: r.settings.mode, code: this.code, name: hidden ? '' : r.name, players: r.members.size, max: MAX_MEMBERS, locked: this.access === 'password', live: r.phase === 'race', hidden });
   }
 
   // The tab is closing or being frozen: off the list at once – back on if it returns.
   unlist() {
+    this.publicListing?.close(); this.publicListing = null;
     if (this.lobby) this.lobby.close();
     this.lobby = null;
   }
@@ -254,6 +271,7 @@ export class HostSession {
   }
 
   closeListing() {
+    this.publicListing?.close(); this.publicListing = null;
     if (this.lobby) this.lobby.close();
     this.lobby = null;
     if (this.room) this.room.onChange = null;
@@ -298,6 +316,7 @@ export class HostSession {
       if (now - this.nextTick > 250) this.nextTick = now + ms;
       if (now - this.lastWatch > 1000) { this.lastWatch = now; this.dropSilentGuests(now); }
       if (this.lobby) this.lobby.beat();
+      this.publicListing?.heartbeat(now);
       // (cut off from the broker – a frozen tab, a network blip – and the one
       // reconnect PeerJS tries didn't take, or it gave the peer up: again every
       // 5 s, until it's back)

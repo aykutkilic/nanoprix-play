@@ -65,6 +65,7 @@ export class View {
     this.sun.color.set('#ffe0b8').lerp(tmpC2.set('#ff9a52'), dusk * 0.8).lerp(tmpC2.set('#c9d4e2'), o * (1 - k)).lerp(tmpC2.set('#8fb0ff'), Math.max(0, k * 2 - 1));
     this.sun.intensity = mix(3.9, 0.9) * (1 - 0.84 * o) + fl * 3.2; this.hemi.intensity = mix(1.25 + o * 0.75, 0.16 + o * 0.05) + fl * 1.4; this.hemi.color.set('#cfe0f2').lerp(tmpC2.set('#d7dbe0'), o).lerp(tmpC2.set('#6f86c8'), k); this.hemi.groundColor.set('#a08a6c').lerp(tmpC2.set('#e2e6ec'), w.snow * 0.8 * (1 - k)).lerp(tmpC2.set('#3a2a1e'), k);
     this.post.exposure = mix(1.32 - w.snow * 0.16, 1.25); this.renderer.toneMappingExposure = this.post.exposure * 0.6; this.post.bloom = mix(0.2 + o * 0.06, 0.42 + o * 0.08);
+    if (this.deep > 0) { const d = this.deep, L = (a, b) => a + (b - a) * d; this.sun.intensity = L(this.sun.intensity, 0.25); this.hemi.intensity = L(this.hemi.intensity, 1.9); this.hemi.color.lerp(tmpC2.set('#f3efe6'), d); this.hemi.groundColor.lerp(tmpC2.set('#8d8a84'), d); if (k > 0.5) this.scene.environmentIntensity = L(this.scene.environmentIntensity, 0.5); } // (below ground it is as bright by night as by day)
     if (this.world && this.nightSet !== k) { this.nightSet = k; this.world.setNight(k); }
   }
   nextCam() { this.cam.mode = (this.cam.mode + 1) % CAMS.length; this.cam.init = false; try { localStorage.setItem(this.riding ? 'nanoprix.camRide' : 'nanoprix.cam', CAMS[this.cam.mode]); } catch { /* */ } return CAMS[this.cam.mode]; }
@@ -76,6 +77,8 @@ export class View {
     const s = (K.shake = Math.max(0, K.shake - dt * 3)) * 0.012; P.position.x += (Math.random() - 0.5) * s; P.position.y += (Math.random() - 0.5) * s; const fov = 66 + (c.boosting ? 5 : 0); K.fov += (fov - K.fov) * Math.min(1, dt * 6); if (Math.abs(P.fov - K.fov) > 0.02) { P.fov = K.fov; P.updateProjectionMatrix(); }
     this.shadowAt(c.x + Math.sin(c.yaw) * 12, c.y, c.z + Math.cos(c.yaw) * 12, 38); this.post.focus = 12; this.post.tilt = 0;
   }
+  // how far below ground one is: 0 … 1
+  below(d) { if (Math.abs((this.deep || 0) - d) > 0.015 || (d === 0 && this.deep)) { this.deep = d; this.light(); } }
   // near: on foot the camera comes close to walls
   usePersp(near = 0.35, ao = 0.6) { this.post.ao.uniforms.uRadius.value = ao; this.close = false; this.leaves(null); if (this.persp.near !== near) { this.persp.near = near; this.persp.updateProjectionMatrix(); } if (this.camera !== this.persp) { this.camera = this.persp; this.scene.fog.density = this.fogDay ?? FOG; } }
   // the isometric view: no perspective, always from the south-east, so north is up to the left

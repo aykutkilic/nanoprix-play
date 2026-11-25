@@ -1,6 +1,6 @@
 // The ways down to the stations below: from the street by stairs, between an escalator down and one up, and along a
 // passage to the wall of the hall. Worked out from the ground, the roads and the line alone, so the same for everybody.
-export const PASS = { W: 0.82, H: 0.98, SLOPE: 0.6, EDGE: 0.3, GAP: 0.36, BACK: 0.75, OPEN: 1.95 }; // half as wide as it is; how high; how steep; the stairs' half width; where the escalators begin; the opening in the ground, behind the door's place and from there on
+export const PASS = { W: 0.82, H: 0.98, SLOPE: 0.6, EDGE: 0.3, GAP: 0.36, BACK: 0.75, OPEN: 1.95, GATE: 0.95, FLAT: 1.4 }; // half as wide as it is; how high; how steep; the stairs' half width; where the escalators begin; the opening in the ground, behind the door's place and from there on; how far after the flight the turnstiles are, and how long it goes straight there
 export const HALLS = { L: 8.4, W: 1.95, H: 1.75, E: 0.84, Y: 0.2, TW: 1.12, TH: 1.4 }; // (as client/under.js draws them)
 const R = 1.1; // how round its corners are
 // corners rounded: [[x, z], …] → points a step apart, or null where there is no room for one
@@ -14,14 +14,14 @@ function round(P) {
 }
 // way, q: the stop below; D: the door's place; to: where its road is; height(x, z); clear(x, z, m): nothing there; front(x, z): one may walk there
 export function planEntry(way, q, D, to, height, clear, many = 1500, front = null) {
-  const f0 = way.frame(q.s), { W, H, SLOPE, BACK, OPEN } = PASS, cap = HALLS, F = []; for (let s = q.s - 64; s <= q.s + 64; s += 1) if (s >= 0 && s <= way.len) { const f = way.frame(s); if (way.st[f[5]] === 2 || Math.abs(s - q.s) < cap.L) F.push([...f, s]); }
+  const f0 = way.frame(q.s), { W, H, SLOPE, BACK, OPEN, FLAT } = PASS, cap = HALLS, F = []; for (let s = q.s - 64; s <= q.s + 64; s += 1) if (s >= 0 && s <= way.len) { const f = way.frame(s); if (way.st[f[5]] === 2 || Math.abs(s - q.s) < cap.L) F.push([...f, s]); }
   const top0 = height(D.x, D.z); if (top0 - f0[1] < 1.5 || top0 - f0[1] > 9) return null;
   // in the line's own hall or tube?
   const hits = (x, y, z, m) => { let b = null, bd = 1e9; for (const f of F) { const d = (f[0] - x) ** 2 + (f[2] - z) ** 2; if (d < bd) { bd = d; b = f; } } if (!b || bd > 90) return false; const u = Math.abs(-(x - b[0]) * b[4] + (z - b[2]) * b[3]), v = Math.abs(b[6] - q.s), hall = v < cap.L + m, w = (hall ? cap.W : cap.TW) + m; return u < w && y < b[1] + (hall ? cap.H : cap.TH) + 0.06 && y + H > b[1] - 0.2; };
   const tries = [], away = Math.atan2(D.x - to.x, D.z - to.z), v1 = Math.min(q.s < OVER.V + 1 ? 3.9 : 5, way.len - q.s - 1.5), v0 = Math.max(way.len - q.s < OVER.V + 1 ? -3.9 : -5, 1.5 - q.s); // (clear of the footbridge's stairs where the line ends)
   for (let k = 0; k < 24; k++) {
     const a = away + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 12), ax = Math.sin(a), az = Math.cos(a), T = [D.x - ax * BACK, D.z - az * BACK]; let ok = true; for (const al of [0, 0.9, OPEN]) for (const u of [-W - 0.12, 0, W + 0.12]) { const x = T[0] + ax * al - az * u, z = T[1] + az * al + ax * u; if (!clear(x, z, 0.12) || Math.abs(height(x, z) - top0) > 0.75) ok = false; } if (ok && front) for (const al of [-0.7, -1.5]) for (const u of [-0.5, 0.5]) if (!front(T[0] + ax * al - az * u, T[1] + az * al + ax * u)) ok = false; if (!ok) continue; const yT = height(T[0], T[1]);
-    for (const sd of [1, -1]) for (let v = Math.ceil(v0); v <= v1; v += 1) { const e = way.frame(q.s + v), nx = -e[4] * sd, nz = e[3] * sd, E = [e[0] + nx * cap.W, e[2] + nz * cap.W], K = [E[0] + nx * 1.5, E[1] + nz * 1.5], yE = e[1] + cap.Y, run = Math.max(0.5, (yT - yE) / SLOPE), L = [T[0] + ax * (run + 0.4 + R), T[1] + az * (run + 0.4 + R)];
+    for (const sd of [1, -1]) for (let v = Math.ceil(v0); v <= v1; v += 1) { const e = way.frame(q.s + v), nx = -e[4] * sd, nz = e[3] * sd, E = [e[0] + nx * cap.W, e[2] + nz * cap.W], K = [E[0] + nx * 1.5, E[1] + nz * 1.5], yE = e[1] + cap.Y, run = Math.max(0.5, (yT - yE) / SLOPE), L = [T[0] + ax * (run + FLAT + R), T[1] + az * (run + FLAT + R)];
       for (const side of [0, 1, -1]) { const B = side ? [L[0] - az * side * 2.5, L[1] + ax * side * 2.5] : null, len = run + (B ? 2.5 + Math.hypot(K[0] - B[0], K[1] - B[1]) : Math.hypot(K[0] - L[0], K[1] - L[1])); tries.push({ c: len + Math.abs(k / 2) * 0.35 + (side ? 2 : 0), a: [ax, az], T, yT, yE, run, way: B ? [T, L, B, K, E] : [T, L, K, E], sd, v, E, n: [nx, nz] }); } }
   }
   tries.sort((p, r) => p.c - r.c); let looked = 0;
@@ -43,9 +43,11 @@ export function inPass(E, x, z, y, m = 0) {
 // a place on it
 export function onPass(E, s) { const P = E.P; s = Math.max(0, Math.min(E.len, s)); let lo = 0, hi = P.length - 1; while (hi - lo > 1) { const k = (lo + hi) >> 1; if (P[k].s <= s) lo = k; else hi = k; } const p = P[lo], q = P[hi], t = (s - p.s) / Math.max(1e-6, q.s - p.s); return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t, z: p.z + (q.z - p.z) * t, dx: p.dx + (q.dx - p.dx) * t, dz: p.dz + (q.dz - p.dz) * t }; }
 // an entry as it is kept (assets/entries.json) → as it is used
-export function unpackEntry(e) { const P = []; for (let i = 0; i < e.p.length; i += 3) P.push({ x: e.p[i], y: e.p[i + 1], z: e.p[i + 2], s: 0, dx: 0, dz: 1 }); P.forEach((p, i) => { const a = P[Math.max(0, i - 1)], b = P[Math.min(P.length - 1, i + 1)], l = Math.hypot(b.x - a.x, b.z - a.z) || 1; p.dx = (b.x - a.x) / l; p.dz = (b.z - a.z) / l; p.s = i ? P[i - 1].s + Math.hypot(p.x - P[i - 1].x, p.z - P[i - 1].z) : 0; }); return { P, len: P[P.length - 1].s, run: e.run, a: e.a, top: { x: P[0].x, y: P[0].y, z: P[0].z }, sd: e.sd, s: e.s }; }
+export function unpackEntry(e) { const P = []; for (let i = 0; i < e.p.length; i += 3) P.push({ x: e.p[i], y: e.p[i + 1], z: e.p[i + 2], s: 0, dx: 0, dz: 1 }); P.forEach((p, i) => { const a = P[Math.max(0, i - 1)], b = P[Math.min(P.length - 1, i + 1)], l = Math.hypot(b.x - a.x, b.z - a.z) || 1; p.dx = (b.x - a.x) / l; p.dz = (b.z - a.z) / l; p.s = i ? P[i - 1].s + Math.hypot(p.x - P[i - 1].x, p.z - P[i - 1].z) : 0; }); return { P, len: P[P.length - 1].s, run: e.run, gate: e.run + PASS.GATE, a: e.a, top: { x: P[0].x, y: P[0].y, z: P[0].z }, sd: e.sd, s: e.s }; }
 // how high one stands in the passage at (x, z), about y; null: not there. Between the stairs and the escalators there is no way across
-export function passFoot(E, x, z, y, m = 0) { const r = inPass(E, x, z, y, m); if (!r) return null; const u = Math.abs(r.u); if (u > PASS.W - 0.09) return null; if (r.s > 0.22 && r.s < E.run - 0.22 && u > PASS.EDGE - 0.03 && u < PASS.GAP + 0.04) return null; return r.y; }
+export function passFoot(E, x, z, y, m = 0) { const r = inPass(E, x, z, y, m); if (!r) return null; const u = Math.abs(r.u); if (u > PASS.W - 0.09) return null; if (r.s > 0.22 && r.s < E.run - 0.22 && u > PASS.EDGE - 0.03 && u < PASS.GAP + 0.04) return null; if (Math.abs(r.s - E.gate) < 0.2 && POSTS.some((q) => Math.abs(r.u - q) < 0.1)) return null; return r.y; }
+// the turnstiles: where their bodies stand across the passage
+export const POSTS = [-0.75, -0.25, 0.25, 0.75];
 // which escalator one stands on: 1 down, −1 up (keep to the right), 0 none
 export const escalator = (E, r) => (r && r.s > 0.1 && r.s < E.run - 0.08 && Math.abs(r.u) > PASS.GAP ? Math.sign(r.u) : 0);
 export const RIDE = 0.8; // how fast they go, along the ground

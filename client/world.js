@@ -5,6 +5,7 @@
 import * as THREE from './vendor/three.module.min.js';
 import { MOON_DIR, CARTOON_MOON, noiseTexture, rng, stoneMaterial } from './realism.js';
 import { surf, weathered, SWELL_GLSL, cutAway } from './weather.js';
+import { readHouses } from './assets.js';
 import { buildRoads } from './roads.js';
 import { buildMarks } from './marks.js';
 import { buildBuildings } from './buildings.js';
@@ -24,7 +25,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   const root = new THREE.Group(), still = new Still(); scene.add(root); root.add(still);
   const g = A.map.grid, M0 = A.map.map, { height, coast } = A.ground;
   const night = { value: 0 }, time = { value: 0 }, W = { keeper: new Keeper(), still, mouths: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, glow: [], spots: [], updates: [], A };
-  W.transit = net.transit = new Transit({ ...A.transit, islands: A.roads.islands });
+  W.transit = net.transit = new Transit({ ...A.transit, islands: A.roads.islands }, A.lines);
   W.lit = (m, color, k) => { m.emissive = new THREE.Color(color); m.emissiveIntensity = 0; W.glow.push([m, k]); return m; };
   W.mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, ...o });
   W.spot = (x, y, z, color, power, reach) => { const l = new THREE.PointLight(color, 0, reach, 1.6); l.position.set(x, y, z); root.add(l); W.spots.push([l, power]); return l; };
@@ -36,9 +37,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
 
   // ------------------------------------------------------------ terrain, in pieces, finer near the camera
   const ground = new THREE.MeshStandardMaterial({ roughness: 0.96 }); 
-  const urban = new Uint8Array(g.w * g.h); // (built-up land, from the houses)
-  for (let k = 0, o = 0; k < A.buildingCount; k++) { const i = Math.round((A.buildings[o] / 20 - g.x0) / g.step), j = Math.round((A.buildings[o + 1] / 20 - g.z0) / g.step); o += 6 + (A.buildings[o + 5] & 255) * 2; for (let b = -2; b <= 2; b++) for (let a = -2; a <= 2; a++) { const q = (j + b) * g.w + i + a; if (q >= 0 && q < urban.length) urban[q] = Math.min(255, urban[q] + (a || b ? 34 : 60)); } }
-  const urbanTex = tex(urban);
+  const urbanTex = tex(A.urban);
   ground.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, { uNight: night, uNoise: { value: noiseTexture() }, uShore: { value: shoreTex }, uPark: { value: parkTex }, uUrban: { value: urbanTex }, uArea: { value: area }, uMouth: W.mouths });
     s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vW; varying float vUpN;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvW = position; vUpN = normal.y;');
@@ -193,18 +192,18 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   // ------------------------------------------------------------ the city (buildings.js), and its trees in tiles
   const R = rng(11), M = new THREE.Matrix4(), Q = new THREE.Quaternion(), tint = new THREE.Color();
   buildBuildings(W);
-  const TILE = 100, tiles = new Map(), put = (x, z) => { const k = Math.floor(x / TILE) * 1000 + Math.floor(z / TILE); if (!tiles.has(k)) tiles.set(k, { x: (Math.floor(x / TILE) + 0.5) * TILE, z: (Math.floor(z / TILE) + 0.5) * TILE, trees: [], cyp: [] }); return tiles.get(k); };
-  const T = A.trees; for (let k = 0; k < T.length; k += 4) { const x = T[k] / 20, z = T[k + 1] / 20; (R() < 0.14 ? put(x, z).cyp : put(x, z).trees).push([x, T[k + 2] / 400, z, T[k + 3] / 1000]); }
+  const TILE = 90, put = (tiles, x, z) => { const k = Math.floor(x / TILE) * 1000 + Math.floor(z / TILE); if (!tiles.has(k)) tiles.set(k, { x: (Math.floor(x / TILE) + 0.5) * TILE, z: (Math.floor(z / TILE) + 0.5) * TILE, trees: [], cyp: [] }); return tiles.get(k); };
   const crown = new THREE.IcosahedronGeometry(1, 2), cp = crown.attributes.position;
   for (let k = 0; k < cp.count; k++) { const x = cp.getX(k), y = cp.getY(k), z = cp.getZ(k), f = 0.8 + 0.3 * Math.abs(Math.sin(x * 5.1 + y * 3.3) * Math.cos(z * 4.7 + y)); cp.setXYZ(k, x * f, y * f * 0.9 + 0.85, z * f); }
   { const n = crown.attributes.normal; for (let k = 0; k < cp.count; k++) { const v = V(cp.getX(k), cp.getY(k) - 0.75, cp.getZ(k)).normalize(); n.setXYZ(k, v.x, v.y, v.z); } } // (round, not faceted)
   const leaf = weathered(new THREE.MeshStandardMaterial({ roughness: 0.95 }), { snow: 0.85, wet: 0.2, shine: 0.6 }), cyp = new THREE.SphereGeometry(1, 6, 6).scale(0.42, 2.1, 0.42).translate(0, 1.9, 0);
   const inst = (geo, mat, list, fn, grp, cast = true) => { if (!list.length) return; const m = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((o, k) => fn(m, o, k)); m.castShadow = cast; m.receiveShadow = true; m.computeBoundingSphere(); grp.add(m); return m; };
   const tileList = [];
+  A.stream.on('h', (at, b) => { const { T } = readHouses(b, A.map), R = rng(11 + at.i * 131 + at.j * 7), tiles = new Map(); for (let k = 0; k < T.length; k += 4) { const x = T[k] / 20, z = T[k + 1] / 20; (R() < 0.14 ? put(tiles, x, z).cyp : put(tiles, x, z).trees).push([x, T[k + 2] / 400, z, T[k + 3] / 1000]); }
   for (const t of tiles.values()) {
     const grp = new THREE.Group(); t.grp = grp; tileList.push(t);
     t.leaf = [inst(crown, leaf, t.trees, (m, [x, y, z, s], k) => { M.compose(V(x, y, z), Q.setFromAxisAngle(UP, R() * 6), V(s, s * (0.85 + R() * 0.4), s)); m.setMatrixAt(k, M); m.setColorAt(k, tint.setHSL(0.22 + R() * 0.07, 0.3 + R() * 0.22, 0.14 + R() * 0.11)); }, grp), inst(cyp, leaf, t.cyp, (m, [x, y, z, s], k) => { M.compose(V(x, y, z), Q.identity(), V(s, s, s)); m.setMatrixAt(k, M); m.setColorAt(k, tint.setHSL(0.3, 0.26, 0.1 + R() * 0.05)); }, grp)].filter(Boolean); still.add(grp);
-  }
+  } });
   W.updateTiles = (cam, far) => { for (const t of tileList) { const d = Math.hypot(t.x - cam.x, t.z - cam.z) - TILE * 0.71; t.grp.visible = d < far; for (const m of t.leaf) m.visible = d < far * 0.6; } };
   await onStage('city');
 
@@ -215,7 +214,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   lampTex.needsUpdate = true;
 
   W.setNight = (k) => { night.value = k; for (const [m, x] of W.glow) m.emissiveIntensity = k * x; for (const [l, x] of W.spots) l.intensity = k * x; };
-  W.update = (dt, now, cam, far) => { time.value = now / 1000; W.updateGround(cam); W.keeper.update(now, cam, far); W.updateMarks(cam, far); W.updateTiles(cam, far); W.updateBuildings(cam, far); for (const u of W.updates) u(dt, now, cam, far); };
+  let asked = 0; W.update = (dt, now, cam, far) => { time.value = now / 1000; if (now - asked > 400) { asked = now; A.stream.focus(cam.x, cam.z, far * 1.15 + 40); } if (W.lampsAt && now > W.lampsAt) { W.lampsAt = 0; lampTex.needsUpdate = true; } W.updateGround(cam); W.keeper.update(now, cam, far); W.updateMarks(cam, far); W.updateTiles(cam, far); W.updateBuildings(cam, far); for (const u of W.updates) u(dt, now, cam, far); };
   W.bounds = M0;
   return W;
 }

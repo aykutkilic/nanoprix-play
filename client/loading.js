@@ -1,12 +1,12 @@
 // While the city comes: it is seen coming. An abstract map of İstanbul – a mosaic –
-// puts itself together out of what has really arrived: the land with the terrain,
-// the roads drawing themselves, the quarters lighting up with the houses, the
-// sights one by one, the ferries setting out. Each part has two halves: fetched
+// puts itself together out of what has really arrived: the land with the terrain, the
+// quarters lighting up with it, the roads drawing themselves, the sights one by one, the
+// ferries setting out. (The houses and the sights themselves come after: stream.js.) Each part has two halves: fetched
 // (faint) and built (bright).
 import { MINI as M } from './mini.js';
 import { t } from './i18n.js';
 // what is in which file, and which stage of the building makes it
-const PARTS = { land: [['terrain.bin', 'map.json'], 'terrain'], sea: [['ships.bin', 'ports.json'], 'sea'], city: [['city.bin'], 'city'], roads: [['roads.json', 'streets.json', 'transit.json'], 'roads'], marks: [['landmarks.bin', 'landmarks.json'], 'landmarks'], ships: [['ports.json', 'ships.bin'], 'ships'], signs: [['streets.json'], 'signs'] };
+const PARTS = { land: [['terrain.bin', 'map.json'], 'terrain'], sea: [['ships.bin', 'ports.json'], 'sea'], city: [['urban.bin'], 'city'], roads: [['roads.json', 'streets.json', 'transit.json', 'lines.json'], 'roads'], marks: [['landmarks.json', 'tiles.json'], 'landmarks'], ships: [['ports.json', 'ships.bin'], 'ships'], signs: [['streets.json'], 'signs'] };
 const ORDER = ['land', 'sea', 'city', 'roads', 'marks', 'ships', 'signs'], ease = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
 export class Loading {
   constructor(host) {

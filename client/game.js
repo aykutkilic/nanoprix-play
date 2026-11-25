@@ -16,16 +16,18 @@ import { encodePose } from '../shared/protocol.js';
 import { makeCarModel, animateCar, setHeadlights, lodCar } from './carmodels.js';
 import { CourseView, CityView } from './courseview.js';
 import { Cruiser, cityTraffic } from '../shared/cruise.js';
+import { Trip } from './trip.js';
+import { makePerson } from './person.js';
 import { t } from './i18n.js';
 import { esc } from './hud.js';
 const DELAY = 0.11, wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 export class Game {
-  constructor({ view, net, hud, audio, fx, input, weather }) { Object.assign(this, { view, net, hud, audio, fx, input, weather }); this.w = {}; this.active = false; this.cars = new Map(); this.override = null; }
+  constructor({ view, net, hud, audio, fx, input, weather }) { Object.assign(this, { view, net, hud, audio, fx, input, weather }); this.w = {}; this.active = false; this.cars = new Map(); this.override = null; this.trip = new Trip(this); }
 
   // ---------------------------------------------------------------- beginnings
-  clear() { this.aboard = null; this.ferryNote = ''; this.view.aboard = false; if (this.view.world) this.view.world.shipTime = null;
+  clear() { if (this.nav) { this.nav.stop(); this.nav.hide(); } if (this.nextSign) this.nextSign.update(null); this.trip.clear(); this.aboard = null; this.ferryNote = ''; this.view.aboard = false; if (this.view.world) this.view.world.shipTime = null;
     for (const c of this.cars.values()) this.drop(c);
-    this.line0 = null; if (this.view.world && this.view.world.transit) { this.view.world.transit.hold = null; this.view.world.transit.on = true; }
+    if (this.view.world && this.active) this.view.world.A.stream.route(null); this.line0 = null; if (this.view.world && this.view.world.transit) { this.view.world.transit.hold = null; this.view.world.transit.on = true; this.view.world.transit.city = true; }
     this.cars.clear(); if (this.cv) this.cv.dispose(); this.cv = null; this.course = null; this.me = null; this.active = false; this.hud.course(null); this.audio.quiet(); this.hud.set('big', ''); this.hud.full.hidden = true; this.full = false; this.hud.set('tower', ''); this.hud.set('sec', ''); if (this.input.touchEl) this.input.touchEl.hidden = true;
   }
   addCar(o, mine) {
@@ -41,6 +43,7 @@ export class Game {
     this.clear(); this.link = link; this.msg = msg; this.myId = myId; this.settings = msg.settings; this.free = msg.settings.mode === 'cruise'; this.override = null; this.wx = msg.wx || { to: msg.settings.weather || 'clear', from: null, at: 0 };
     const def = COURSES.find((c) => c.id === msg.settings.course), course = (this.course = this.free ? null : new Course(this.net, def, msg.settings.reverse));
     if (this.free) { this.simits = []; this.traffic = []; this.cv = new CityView(this.view.scene, cityTraffic(this.net, msg.seed, msg.settings.traffic), this.net); this.pilot = new Cruiser(this.net); this.auto1 = false; } else { this.simits = makeSimits(course, msg.seed); this.traffic = makeTraffic(course, msg.seed, msg.settings.traffic); this.cv = new CourseView(this.view.scene, this.net, course, this.simits, this.traffic, this.view.world); }
+    this.view.world.A.stream.route(course ? Array.from({ length: Math.ceil(course.len / 40) }, (_, k) => { const p = course.place(k * 40, 0, {}); return [p.x, p.z]; }) : null);
     this.view.warm();
     this.stats = this.free ? null : new RaceStats(course.len, msg.settings.laps, msg.cars); this.seen = 0; this.full = false; this.aboard = null; this.ferryOff = null; this.ferryNote = '';
     for (const o of msg.cars) this.enter(o);
@@ -59,8 +62,8 @@ export class Game {
     putOn(c.st, { x: r.p[i * 3] - (dz / l) * lat, z: r.p[i * 3 + 1] + (dx / l) * lat, y: r.p[i * 3 + 2], yaw: Math.atan2(dx, dz) });
   }
   gone(id) { const c = this.cars.get(id); if (!c || c.mine) return; this.drop(c); this.cars.delete(id); }
-  drop(c) { this.view.scene.remove(c.model); c.model.traverse((o) => { if (o.isSprite) { o.material.map.dispose(); o.material.dispose(); } }); c.model.userData.paint.dispose(); c.model.userData.tail.dispose(); }
-  toggleAuto() { if (!this.free || !this.me) return; this.auto1 = !this.auto1; this.pilot.reset(); this.pilot.obey = true; if (this.auto1) this.pilot.speed = Math.max(5, Math.min(16, Math.abs(this.me.speed) > 3 ? this.me.speed : 8.5)); this.hud.flash(`<small>${t('auto1')} ${this.auto1 ? '✓' : '✕'}</small>`, 1200); }
+  drop(c) { if (c.person) { this.view.scene.remove(c.person); c.person.userData.dispose(); c.person = null; } this.view.scene.remove(c.model); c.model.traverse((o) => { if (o.isSprite) { o.material.map.dispose(); o.material.dispose(); } }); c.model.userData.paint.dispose(); c.model.userData.tail.dispose(); }
+  toggleAuto() { if (!this.free || !this.me || this.trip.away) return; this.auto1 = !this.auto1; this.pilot.reset(); this.pilot.obey = true; if (this.auto1) this.pilot.speed = Math.max(5, Math.min(16, Math.abs(this.me.speed) > 3 ? this.me.speed : 8.5)); this.hud.flash(`<small>${t('auto1')} ${this.auto1 ? '✓' : '✕'}</small>`, 1200); }
   poses(b) {
     if (!this.active || b.race !== this.msg.no) return;
     for (const p of b.cars) { if (p.id === this.myId) continue; const c = this.cars.get(p.id); if (!c) continue; const L = c.buf[c.buf.length - 1]; if (L && p.t <= L.t) continue; c.buf.push(p); if (c.buf.length > 24) c.buf.shift(); c.prog = p.prog; c.fin = p.finished; if (this.stats) this.stats.sample(p.id, p.t, p.prog, Math.hypot(p.vx, p.vz)); }
@@ -74,23 +77,25 @@ export class Game {
     let i = b.length - 1; while (i > 0 && b[i].t > time) i--;
     const p = b[i], q = b[i + 1], o = c.st;
     if (q && time >= p.t) { const u = (time - p.t) / Math.max(1e-3, q.t - p.t), u2 = u * u, u3 = u2 * u, D = q.t - p.t, jump = Math.hypot(q.x - p.x, q.z - p.z) > 6; if (jump) { Object.assign(o, { x: q.x, y: q.y, z: q.z }); } else { const H = (a, va, e, vb) => (2 * u3 - 3 * u2 + 1) * a + (u3 - 2 * u2 + u) * D * va + (-2 * u3 + 3 * u2) * e + (u3 - u2) * D * vb; o.x = H(p.x, p.vx, q.x, q.vx); o.z = H(p.z, p.vz, q.z, q.vz); o.y = p.y + (q.y - p.y) * u; } o.yaw = p.yaw + wrapA(q.yaw - p.yaw) * u; o.vx = p.vx + (q.vx - p.vx) * u; o.vz = p.vz + (q.vz - p.vz) * u; o.steer = p.steer + (q.steer - p.steer) * u; o.slip = q.slip; } else { const e = Math.max(0, Math.min(0.25, time - p.t)); o.x = p.x + p.vx * e; o.z = p.z + p.vz * e; o.y = p.y; o.yaw = p.yaw; o.vx = p.vx; o.vz = p.vz; o.steer = p.steer; o.slip = p.slip; }
-    const f = q || p; o.drift = f.drift; o.boosting = f.boosting; o.braking = f.braking; o.horn = f.horn; o.air = f.air; o.wallT = f.wall ? 0.1 : 0; return o;
+    const f = q || p; o.foot = f.foot; o.drift = f.drift; o.boosting = f.boosting; o.braking = f.braking; o.horn = f.horn; o.air = f.air; o.wallT = f.wall ? 0.1 : 0; return o;
   }
   frame(dt, now) {
     if (!this.active) return;
-    const T = (this.t = this.raceTime()), me = this.me, V = this.view, inp = this.input.read(); this.input.racing = T > 0 && !this.finished;
+    const T = (this.t = this.raceTime()), me = this.me, V = this.view, inp = this.input.read(); this.input.racing = T > 0 && !this.finished; this.input.walking = this.trip.away;
     // the count
     if (!this.free && !this.watching) { const n = Math.ceil(-T); if (n !== this.count) { if (n >= 1 && n <= 3) { this.hud.flash(String(n), 900); this.audio.beep(false); } else if (n === 0 && this.count === 1) { this.hud.flash(t('go'), 900); this.audio.beep(true); } this.count = n; } }
     // others, as shown and (for touching) as they are now
     const w = weatherAt(this.wx, this.msg.seed, T, this.w);
-    const under = this.mine && this.me ? this.net.under(this.me) : 0; this.underK = (this.underK || 0) + ((under === 2 ? 1 : 0) - (this.underK || 0)) * Math.min(1, dt * 5); if (under === 2) { w.grip = 1; w.wind = 0; }
+    const under = this.trip.deep ? 2 : this.mine && this.me && !this.trip.away ? this.net.under(this.me) : 0; this.underK = (this.underK || 0) + ((under === 2 ? 1 : 0) - (this.underK || 0)) * Math.min(1, dt * 5); if (under === 2) { w.grip = 1; w.wind = 0; }
     const others = []; let showT = T - DELAY;
     for (const c of this.cars.values()) if (!c.mine) { if (c.buf.length) this.at(c, showT); others.push(c); }
-    const TR = V.world.transit; if (TR) { TR.on = this.free || this.settings.traffic > 0; TR.hold = this.course && T < 6 ? (this.line0 ||= this.course.place(0, 0, {})) : null; } const buses = TR && me ? TR.about(me.x, me.z, T) : [];
+    const TR = V.world.transit; if (TR) { TR.city = this.free; TR.clock = this.msg.clock || TR.clock; TR.on = this.free || this.settings.traffic > 0; TR.hold = this.course && T < 6 ? (this.line0 ||= this.course.place(0, 0, {})) : null; } const buses = TR && me ? TR.about(me.x, me.z, T) : []; V.world.shipTime = T; const onFoot = this.free && me ? this.trip.frame(dt, now, T, inp) : null, away = this.trip.away;
     if (me) {
       const ctl = { steer: inp.steer, gas: inp.gas, brake: inp.brake, drift: inp.drift, turbo: inp.turbo };
       if (T < 0) Object.assign(ctl, { gas: 0, brake: 0, steer: inp.steer, turbo: false, drift: false });
       if (this.finished) { this.auto ||= makeBot(1, 0); const q = driveBot(this.auto, me, this.course, others.map((o) => o.st), T, dt, w.grip); Object.assign(ctl, q, { gas: q.gas * 0.55, turbo: false }); }
+      if (this.brakeFor > 0) { this.brakeFor -= dt; if (!inp.gas || this.trip.stopping) Object.assign(ctl, { brake: me.speed > 0.2 ? 1 : 0, gas: 0, hold: true }); }
+      if (away) Object.assign(ctl, { gas: 0, brake: 0, steer: 0, turbo: false, drift: false });
       if (this.auto1) { // cruise control: ↑↓ the speed, ←→ the way at the next junction, the brake's other key (space) lets go
         if (inp.drift) this.toggleAuto(); else {
           if (inp.gas || inp.brake) { if (this.pilot.obey) { this.pilot.obey = false; this.pilot.speed = Math.max(3, this.pilot.limit / KMH); } this.pilot.speed = Math.max(3, Math.min(17, this.pilot.speed + (inp.gas - inp.brake) * dt * 4)); } if (Math.abs(inp.steer) > 0.6) this.pilot.want = Math.sign(inp.steer);
@@ -102,7 +107,7 @@ export class Game {
       if (inp.horn && now - (this.hornAt || 0) > 320) { this.hornAt = now; this.audio.horn(); }
       // slipstream
       let draft = 0; for (const o of others) { const dx = o.st.x - me.x, dz = o.st.z - me.z, f = dx * Math.sin(me.yaw) + dz * Math.cos(me.yaw), l = Math.abs(dx * Math.cos(me.yaw) - dz * Math.sin(me.yaw)); if (f > 0.8 && f < 7 && l < 0.6 && me.speed > 8) draft = Math.max(draft, 1 - (f - 0.8) / 6.2); } me.draft += (draft - me.draft) * Math.min(1, dt * 4);
-      if (this.free) this.ferry(now, T, me); if (this.aboard) this.acc = 0; else
+      if (this.free && !away) this.ferry(now, T, me); if (this.aboard || away) this.acc = 0; else
       this.acc = Math.min(0.25, this.acc + dt);
       const wasHit = me.hit;
       while (this.acc >= STEP) {
@@ -110,33 +115,34 @@ export class Game {
         if (T < 0) { me.steer += (ctl.steer - me.steer) * 0.1; continue; }
         stepCar(me, ctl, this.net, this.course ? this.course.only : null);
         if (this.course) track(me, this.course);
-        for (const o of others) if (Math.abs(o.st.x - me.x) < 2.5 && Math.abs(o.st.z - me.z) < 2.5 && o.buf.length) { const L = o.buf[o.buf.length - 1], e = Math.max(0, Math.min(0.2, T - L.t)); this.tmp = Object.assign(this.tmp || {}, { x: (L.x + L.vx * e) * 0.5 + o.st.x * 0.5, z: (L.z + L.vz * e) * 0.5 + o.st.z * 0.5, y: L.y, yaw: L.yaw, vx: L.vx, vz: L.vz, type: o.car }); bump(me, this.tmp, false); }
+        for (const o of others) if (!o.st.foot && Math.abs(o.st.x - me.x) < 2.5 && Math.abs(o.st.z - me.z) < 2.5 && o.buf.length) { const L = o.buf[o.buf.length - 1], e = Math.max(0, Math.min(0.2, T - L.t)); this.tmp = Object.assign(this.tmp || {}, { x: (L.x + L.vx * e) * 0.5 + o.st.x * 0.5, z: (L.z + L.vz * e) * 0.5 + o.st.z * 0.5, y: L.y, yaw: L.yaw, vx: L.vx, vz: L.vz, type: o.car }); bump(me, this.tmp, false); }
         if (this.cv && this.cv.near) for (const v of buses.length ? [...this.cv.near, ...buses] : this.cv.near) { if (now < (v.skip || 0)) continue; const dx = Math.abs(v.x - me.x), dz = Math.abs(v.z - me.z); if (dx < 2.5 && dz < 2.5) if (bump(me, v, false, undefined, 0.42) > 0.3) v.skip = now + 1200; } // (one knock, then it lets the car by)
       }
       if (me.hit > wasHit + 0.12) { this.audio.crash(me.hit); this.fx.sparks(me, 8); V.cam.shake = Math.max(V.cam.shake, me.hit); }
-      this.marks(me, 0, dt); if (me.wallT > 0 && Math.abs(me.speed) > 4 && Math.random() < 0.4) this.fx.sparks(me, 2); if (me.boosting) this.fx.flame(me);
+      if (!away) this.marks(me, 0, dt); if (!away && me.wallT > 0 && Math.abs(me.speed) > 4 && Math.random() < 0.4) this.fx.sparks(me, 2); if (me.boosting) this.fx.flame(me);
       // simits
       for (const q of this.simits) if (now > q.taken && Math.abs(q.x - me.x) < 0.75 && Math.abs(q.z - me.z) < 0.75 && Math.abs(q.y - me.y) < 1) { q.taken = now + 9000; me.turbo = Math.min(1, me.turbo + 0.3); this.audio.simit(); this.fx.crumbs(q.x, q.y, q.z); }
-      if (this.free) { me.turbo = Math.min(1, me.turbo + dt * 0.12); if (!this.aboard && !me.lost && me.air === 0) { if (now - (this.safeAt || 0) > 700) { this.safeAt = now; this.safe = { x: me.x, y: me.y, z: me.z, yaw: me.yaw }; } } }
-      if ((me.lost || 0) > 0.8) this.reset();
+      if (this.free) { me.turbo = Math.min(1, me.turbo + dt * 0.12); if (!this.aboard && !away && !me.lost && me.air === 0) { if (now - (this.safeAt || 0) > 700) { this.safeAt = now; this.safe = { x: me.x, y: me.y, z: me.z, yaw: me.yaw }; } } }
+      if (!away && (me.lost || 0) > 0.8) this.reset();
       if (this.stats && T > 0 && !this.finished) this.stats.sample(this.myId, T, me.prog, me.speed);
       if (this.course && !this.finished && T > 0) this.laps(T, now);
-      if (now - this.sent > 33 && !this.watching) { this.sent = now; me.finished = !!this.finished; this.link.sendBinary(encodePose(me, this.msg.no, T)); }
+      if (now - this.sent > 33 && !this.watching) { this.sent = now; me.finished = !!this.finished; this.link.sendBinary(encodePose(away && onFoot ? { ...onFoot, foot: true } : me, this.msg.no, T)); }
       this.audio.drive(me, ctl.gas);
     }
     for (const o of others) { this.marks(o.st, o.id % 997, dt); if (o.st.boosting && Math.random() < 0.6) this.fx.flame(o.st); if (o.st.horn && now - (o.hornAt || 0) > 340) { o.hornAt = now; if (me) this.audio.horn(0.18 / (1 + Math.hypot(o.st.x - me.x, o.st.z - me.z) / 6)); } }
     // models
-    const eye = V.camera === V.ortho ? null : V.camera.position; for (const c of this.cars.values()) { const s = c.st; lodCar(c.model, eye ? (s.x - eye.x) ** 2 + (s.y - eye.y) ** 2 + (s.z - eye.z) ** 2 > 900 : false); c.model.position.set(s.x, s.y + drawnAt(this.net, s.x, s.z, s.y) - 0.004, s.z); if (c.model.userData.contact) { const h = s.air > 0 ? Math.min(1, s.air * 2) : 0; c.model.userData.contact.material.opacity = 0.85 * (1 - h); } c.model.rotation.set(-Math.atan(s.slope || this.slopeOf(s)) * 0.95, s.yaw, 0, 'YXZ'); animateCar(c.model, s, dt, V.night); c.model.visible = c.mine || c.buf.length > 0 || T < 1; }
+    const eye = V.camera === V.ortho ? null : V.camera.position; for (const c of this.cars.values()) { const s = c.st; lodCar(c.model, eye ? (s.x - eye.x) ** 2 + (s.y - eye.y) ** 2 + (s.z - eye.z) ** 2 > 900 : false); c.model.position.set(s.x, s.y + drawnAt(this.net, s.x, s.z, s.y) - 0.004, s.z); if (c.model.userData.contact) { const h = s.air > 0 ? Math.min(1, s.air * 2) : 0; c.model.userData.contact.material.opacity = 0.85 * (1 - h); } c.model.rotation.set(-Math.atan(s.slope || this.slopeOf(s)) * 0.95, s.yaw, 0, 'YXZ'); animateCar(c.model, s, dt, V.night); c.model.visible = c.mine || (c.buf.length > 0 && !s.foot) || (T < 1 && !s.foot); if (!c.mine && (s.foot || c.person)) { if (!c.person) { c.person = makePerson(c.color); const l = this.label(c.name, c.color); l.position.y = 0.95; c.person.add(l); this.view.scene.add(c.person); } c.person.visible = !!s.foot; if (s.foot) { c.person.position.set(s.x, s.y, s.z); c.person.rotation.y = s.yaw; c.person.userData.step(dt, Math.hypot(s.vx, s.vz)); } } }
     // light of the day
     const day = this.free ? 420 : 150, L = this.override !== null ? this.override : this.settings.light === 'night' ? 1 : this.settings.light === 'cycle' ? Math.min(1, Math.max(0, 0.5 - 0.85 * Math.cos(((T + 20) / day) * Math.PI * 2))) : 0;
     if (Math.abs(V.night - L) > 0.001) V.applyNight(Math.abs(L - V.night) < dt * 0.7 ? L : V.night + Math.sign(L - V.night) * dt * 0.7); setHeadlights(V.night);
-    const focus = me || this.leader(); if (!focus) return;
-    { const u = this.net.under(focus) === 2; this.underK = me ? this.underK : u ? 1 : 0; V.setUnder(u, focus); V.aboard = !!this.aboard && !!me; if (this.underK > 0.01) { const k = 1 - this.underK; w.fog *= k; w.rain *= k; w.snowing *= k; w.flash *= k; } }
+    const focus = onFoot || me || this.leader(); if (!focus) return;
+    { const u = !this.trip.away && this.net.under(focus) === 2; this.underK = me ? this.underK : u ? 1 : 0; V.setUnder(u, focus); V.aboard = !!this.aboard && !!me; if (this.underK > 0.01) { const k = 1 - this.underK; w.fog *= k; w.rain *= k; w.snowing *= k; w.flash *= k; } }
     this.weather.update(dt, now, w, focus, V.night, [...(me ? [me] : []), ...others.map((o) => o.st)].filter((c) => this.underK < 0.5 && Math.abs(c.x - focus.x) + Math.abs(c.z - focus.z) < 30)); V.setWeather(w, this.weather.flash); setHeadlights(Math.max(V.night, Math.min(1, w.fog * 60 + w.rain * 0.5 + w.snowing * 0.5)));
     V.world.setLights(this.free ? T : null, now); V.world.shipTime = T;
     if (this.cv) { this.cv.night = V.night; this.cv.update(now, T, focus); if (this.cv.crowd) this.audio.crowd(this.cv.crowd.update(now, focus, w, V.night, this.fx)); }
-    if (this.stats) this.announce(); V.follow(focus, dt, inp.back); V.lightCar(focus);
+    if (this.stats) this.announce(); V.follow(focus, dt, inp.back); if (!away) V.lightCar(focus); else V.headlight.intensity = 0;
     this.audio.others(others.map((o) => [o.id, o.st, Math.hypot(o.st.x - focus.x, o.st.z - focus.z)]).filter((o) => o[2] < 30));
+    if (this.nav) this.nav.frame(dt, now); if (this.nextSign && now - (this.signAt || 0) > 150) { this.signAt = now; this.nextSign.update(me && !away && T > 0 ? me : null); }
     this.paint(focus, now);
   }
   slopeOf(s) { const ux = Math.sin(s.yaw) * 0.6, uz = Math.cos(s.yaw) * 0.6, a = this.net.at(s.x + ux, s.z + uz, s.y + 0.15, null, {}), b = this.net.at(s.x - ux, s.z - uz, s.y + 0.15, null, {}); return a && b && Math.abs(a.h - b.h) < 0.5 ? (a.h - b.h) / 1.2 : 0; }
@@ -153,7 +159,7 @@ export class Game {
     void now;
   }
   reset() {
-    if (this.aboard) return;
+    if (this.aboard) return; if (this.trip.away) { this.trip.fetch(); return; }
     const now = performance.now(); if (!this.me || now < this.resetAt || this.t < 0) return; this.resetAt = now + 1500;
     if (this.course) { const p = this.course.place(this.me.s); putOn(this.me, p); } else putOn(this.me, this.safe); this.me.lost = 0; this.view.cam.init = false; this.fx.smoke(this.me, 2);
   }
@@ -190,8 +196,8 @@ export class Game {
     const q = this.net.at(focus.x, focus.z, focus.y, null, {}); let near = '', bd = 1e9; for (const m of this.view.world.marks) { const d = Math.hypot(m.x - focus.x, m.z - focus.z) - m.r; if (this.free && m.hero && d < 16) this.discover(m); if (d < 14 && d + (m.hero ? -6 : 0) < bd) { bd = d + (m.hero ? -6 : 0); near = m.name; } }
     const turn = this.free && this.auto1 && this.pilot.turn && this.pilot.left < 60 ? this.pilot.turn : null, sub = this.free ? (this.auto1 ? `${t('auto1')} · ${this.pilot.red ? '🔴' : this.pilot.obey ? t('atLimit') : `${Math.round(this.pilot.speed * KMH)} km/h`}` : '') : '', way = turn ? `${turn.uturn ? '↩' : Math.abs(turn.a) < 0.5 ? '↑' : turn.a > 0 ? '↱' : '↰'} ${esc(turn.r.name)} · ` : '';
     if (this.free && !this.found) this.discover({ id: '', name: '' , skip: true });
-    let limit = 0; if (q && me && this.net.streets) { const a = q.i * 3, dir = Math.sin(me.yaw) * (q.road.p[a + 3] - q.road.p[a]) + Math.cos(me.yaw) * (q.road.p[a + 4] - q.road.p[a + 1]) >= 0 ? 1 : -1; limit = this.net.streets.limit(q.road, q.road.s[q.i], dir); }
+    let limit = 0; if (q && me && !this.trip.away && this.net.streets) { const a = q.i * 3, dir = Math.sin(me.yaw) * (q.road.p[a + 3] - q.road.p[a]) + Math.cos(me.yaw) * (q.road.p[a + 4] - q.road.p[a + 1]) >= 0 ? 1 : -1; limit = this.net.streets.limit(q.road, q.road.s[q.i], dir); }
     const me0 = this.mine ? this.myId : this.watchId ?? this.leaderId(); if (this.watching && !this.ferryNote) { const c = this.cars.get(me0); this.watchNote = c ? `👁 ${esc(c.name)} · ← →` : ''; } if (this.full && now - (this.fullAt || 0) > 500) { this.fullAt = now; this.hud.set('full', `<h3>${esc(this.course.def.name.tr)} <small>${t('lap')} ${Math.min(this.settings.laps, (me ? Math.max(0, me.lap) : 0) + 1)}/${this.settings.laps}</small></h3>${board(this.stats, me0)}${gapChart(this.stats, me0, { w: 760, h: 230 })}`); }
-    this.hud.draw({ tower: this.stats ? tower(this.stats, me0, this.hud.mode) : '', mode: this.stats ? t(this.hud.mode === 'top' ? 'topSpeed' : this.hud.mode === 'last' ? 'lastLap' : this.hud.mode) : '', sec: this.stats && (me || this.cars.has(me0)) && this.stats.cars.has(me0) ? sectors(this.stats, me0) : '', pedals: me ? [this.ctl ? this.ctl.gas : 0, this.ctl ? this.ctl.brake : 0] : null, limit, sub, free: this.free, pos: this.free || !me ? 0 : my + 1, n: list.length, lap: me && !this.free ? me.lap : 0, laps: this.free ? 0 : this.settings.laps, time: this.finished || (this.t * 1000 - (this.free ? 0 : 0)), best: this.best, list: this.free ? [] : list.slice(0, 8).map((o) => ({ name: o.c.name, color: o.c.color, me: o.c.mine, gap: me && !o.c.done && !this.finished ? o.c.prog - myP : undefined })), speed: me ? me.speed : Math.hypot(focus.vx, focus.vz), turbo: me ? me.turbo : 0, boosting: me && me.boosting, road: q ? esc(q.road.name) : '', near: this.ferryNote || (this.watching && this.watchNote) || way + esc(near), cars: list.filter((o) => !o.c.mine).map((o) => ({ x: o.c.st.x, z: o.c.st.z, color: o.c.color })), me: focus, yaw: focus.yaw, wrong: this.wrongT > 0.7, zoom: 1.15 });
+    this.hud.draw({ tower: this.stats ? tower(this.stats, me0, this.hud.mode) : '', mode: this.stats ? t(this.hud.mode === 'top' ? 'topSpeed' : this.hud.mode === 'last' ? 'lastLap' : this.hud.mode) : '', sec: this.stats && (me || this.cars.has(me0)) && this.stats.cars.has(me0) ? sectors(this.stats, me0) : '', pedals: me && !this.trip.away ? [this.ctl ? this.ctl.gas : 0, this.ctl ? this.ctl.brake : 0] : null, limit, sub, free: this.free, pos: this.free || !me ? 0 : my + 1, n: list.length, lap: me && !this.free ? me.lap : 0, laps: this.free ? 0 : this.settings.laps, time: this.finished || (this.t * 1000 - (this.free ? 0 : 0)), best: this.best, list: this.free ? [] : list.slice(0, 8).map((o) => ({ name: o.c.name, color: o.c.color, me: o.c.mine, gap: me && !o.c.done && !this.finished ? o.c.prog - myP : undefined })), speed: me && !this.trip.away ? me.speed : Math.hypot(focus.vx, focus.vz), turbo: me ? me.turbo : 0, boosting: me && me.boosting, road: q && !this.trip.deep ? esc(q.road.name) : '', near: this.trip.note || this.ferryNote || (this.watching && this.watchNote) || way + esc(near), cars: list.filter((o) => !o.c.mine).map((o) => ({ x: o.c.st.x, z: o.c.st.z, color: o.c.color })), me: focus, yaw: focus.yaw, wrong: this.wrongT > 0.7, zoom: 1.15 });
   }
 }

@@ -2,6 +2,7 @@
 // suspension bridges, the Galata bridge, the Maçka cable car.
 import * as THREE from './vendor/three.module.min.js';
 
+import { readMarks } from './assets.js';
 import { weathered } from './weather.js';
 import { handOver } from './gpu.js';
 
@@ -37,22 +38,23 @@ export function buildMarks(W) {
   W.marks = [];
   const empty = new THREE.BufferGeometry(); empty.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3)); empty.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 0);
   function* make(q) {
-    const m = q.m, P = L.pos.subarray(m.v0 * 3, (m.v0 + m.vn) * 3), X = L.idx.subarray(m.i0, m.i0 + m.in), N = yield* creased(P, X, m.q), n = m.in, C = new Uint8Array(n * 4), I = new Int16Array(n * 4); yield;
-    for (let k = 0; k < n; k++) { const v = m.v0 + X[k], i = v * 4; C[k * 4] = L.col[i]; C[k * 4 + 1] = L.col[i + 1]; C[k * 4 + 2] = L.col[i + 2]; C[k * 4 + 3] = L.col[i + 3]; I[k * 4] = L.pos[v * 3]; I[k * 4 + 1] = L.pos[v * 3 + 1]; I[k * 4 + 2] = L.pos[v * 3 + 2]; if ((k & 8191) === 8191) yield; } // (colours already linear, as glTF's are; the fourth: what kind of thing it is)
+    const m = q.m, { pos: P, idx: X, col } = q.data, N = yield* creased(P, X, m.q), n = m.in, C = new Uint8Array(n * 4), I = new Int16Array(n * 4); yield;
+    for (let k = 0; k < n; k++) { const v = X[k], i = v * 4; C[k * 4] = col[i]; C[k * 4 + 1] = col[i + 1]; C[k * 4 + 2] = col[i + 2]; C[k * 4 + 3] = col[i + 3]; I[k * 4] = P[v * 3]; I[k * 4 + 1] = P[v * 3 + 1]; I[k * 4 + 2] = P[v * 3 + 2]; if ((k & 8191) === 8191) yield; } // (colours already linear, as glTF's are; the fourth: what kind of thing it is)
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(I, 4)); g.setAttribute('normal', new THREE.BufferAttribute(N, 4, true)); g.setAttribute('color', new THREE.BufferAttribute(C, 4, true)); g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, (m.top * 0.5) / m.q, 0), Math.hypot(m.r, m.top * 0.55) / m.q * 1.15); yield; q.o.geometry = handOver(g); q.made = true;
   }
   // made as one comes near, the nearest first, a little each frame; let go of when long out of sight
   const all = []; let job = null;
   W.updateMarks = (cam, far, ms = 1.6) => {
-    const t0 = performance.now(); let best = null; for (const q of all) { const d = Math.hypot(q.m.x - cam.x, q.m.z - cam.z) - q.m.r, see = d < Math.min(far * q.reach, q.max); q.o.visible = see && q.made; if (see) { q.off = 0; if (!q.made && (!best || d < best.d)) best = { d, q }; } else if (q.made) { q.off ||= t0; if (t0 - q.off > 15000) { q.o.geometry.dispose(); q.o.geometry = empty; q.made = false; } } }
+    const t0 = performance.now(); let best = null; for (const q of all) { const d = Math.hypot(q.m.x - cam.x, q.m.z - cam.z) - q.m.r, see = d < Math.min(far * q.reach, q.max); q.o.visible = see && q.made; if (see) { q.off = 0; if (!q.made && q.data && (!best || d < best.d)) best = { d, q }; } else if (q.made) { q.off ||= t0; if (t0 - q.off > 15000) { q.o.geometry.dispose(); q.o.geometry = empty; q.made = false; } } }
     let n = 0; while (performance.now() - t0 < ms) { if (!job) { if (!best || n) break; job = { q: best.q, it: make(best.q) }; } if (job.it.next().done) { job = null; n++; } } return job || best ? 1 : 0;
   };
   const again = W.remake; W.remake = () => { if (again) again(); job = null; for (const q of all) { q.o.geometry = empty; q.made = false; } };
   for (const m of L.items) {
-    const o = new THREE.Mesh(empty, stone); o.position.set(m.x, m.y, m.z); o.scale.setScalar(m.q); o.castShadow = o.receiveShadow = true; o.name = m.name; o.visible = false; W.still.add(o); all.push({ m, o, made: false, off: 0, reach: m.top > 9 ? 9 : m.top > 4 || m.hero ? 2.2 : 1.12, max: m.top > 9 ? 1e9 : 90 + m.r * 130 + m.top * 60 });
+    const o = new THREE.Mesh(empty, stone); o.position.set(m.x, m.y, m.z); o.scale.setScalar(m.q); o.castShadow = o.receiveShadow = true; o.name = m.name; o.visible = false; W.still.add(o); all.push({ m, o, made: false, data: null, off: 0, reach: m.top > 9 ? 9 : m.top > 4 || m.hero ? 2.2 : 1.12, max: m.top > 9 ? 1e9 : 90 + m.r * 130 + m.top * 60 });
     W.marks.push({ ...m, obj: o });
     if (W.coast(m.x, m.z) < 10) W.light(m.x, m.z, Math.min(6, m.r * 0.6), 0.5);
   }
+  const come = (t, b) => { for (const [k, d] of readMarks(b, L.items, t.m)) all[k].data = d; }; for (const k of ['m', 'd', 's']) A.stream.on(k, come);
   const mat = W.mat, lit = W.lit, piece = (geo, m, x, y, z, parent) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; parent.add(o); return o; };
   // ------------------------------------------------------------ the two bridges over the Bosphorus
   W.bridgeLights = [];

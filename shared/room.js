@@ -1,6 +1,7 @@
 // A room: who is in it, what is raced, when it starts and how it ends. Runs
 // wherever the host is – in the hosting player's browser (p2p.js) or on the
 // Node server – and is the same for both.
+import { cityStart } from './clock.js';
 import { cleanPlayerName, cleanRoomName } from './names.js';
 import { COURSES } from './courses.js';
 import { CARS, makeCar, stepCar, startOn, track, bump, STEP } from './car.js';
@@ -72,6 +73,8 @@ export class Room {
       case 'name': if (host) { this.name = cleanRoomName(String(msg.name || '')) || this.name; this.broadcastRoom(); } break;
       case 'start': if (host && this.phase === 'lobby') this.start(); break;
       case 'finish': this.finish(m, msg); break;
+      // (alone in a cruise one may let the time run on, waiting for a bus)
+      case 'skip': if (this.race && this.race.cruise && this.members.size === 1) { this.race.startAt -= Math.max(0, Math.min(1500, Number(msg.ms) || 0)); this.broadcast({ t: 'startAt', startAt: this.race.startAt }); } break;
       case 'weather': if (host && CHOICES.includes(msg.weather)) { // the host may turn the weather at any time
         this.settings = { ...this.settings, weather: msg.weather }; const R = this.race; if (R) { R.settings.weather = msg.weather; R.wx = { to: msg.weather, from: R.wx.to, at: (this.now() - R.startAt) / 1000 }; this.broadcast({ t: 'weather', wx: R.wx }); } else this.broadcastRoom(); } break;
       case 'lobby': if (host && this.phase !== 'lobby') this.toLobby(); break;
@@ -94,7 +97,7 @@ export class Room {
     this.bots = Array.from({ length: nb }, (_, k) => ({ id: 60000 + k, name: names[(k + seed) % names.length], car: CARS[(k * 5 + seed) % CARS.length].id, color: free[k % free.length] || COLOURS[k % COLOURS.length], bot: true }));
     // the grid: bots ahead, people by their last result reversed, newest last
     const grid = [...this.bots.map((b) => b.id), ...people.sort((a, b) => a.wins - b.wins || Math.sin(seed + a.id) - Math.sin(seed + b.id)).map((m) => m.id)];
-    this.race = { no: this.raceNo, seed, settings: { ...S }, grid, startAt: this.now() + COUNTDOWN, results: new Map(), out: new Set(), endAt: 0, course: this.net && !cruise ? new Course(this.net, def, S.reverse) : null, traffic: [], cruise, wx: { to: S.weather, from: null, at: 0 } };
+    this.race = { no: this.raceNo, seed, settings: { ...S }, grid, startAt: this.now() + COUNTDOWN, results: new Map(), out: new Set(), endAt: 0, course: this.net && !cruise ? new Course(this.net, def, S.reverse) : null, traffic: [], cruise, wx: { to: S.weather, from: null, at: 0 }, clock: cityStart(Date.now(), S.light) };
     if (cruise) this.race.startAt = this.now(); // (nothing to count down to)
     for (const m of this.members.values()) { m.pose = null; m.prog = -1e9; m.ready = false; m.racing = grid.includes(m.id); }
     if (this.race.course) {
@@ -108,7 +111,7 @@ export class Room {
 
   raceMsg() {
     const R = this.race, who = (id) => this.members.get(id) || this.bots.find((b) => b.id === id);
-    return { t: 'race', no: R.no, seed: R.seed, settings: R.settings, wx: R.wx, startAt: R.startAt, cars: R.grid.map((id, slot) => { const m = who(id); return m && { id, slot, name: m.name, car: m.car, color: m.color, bot: !!m.bot }; }).filter(Boolean) };
+    return { t: 'race', no: R.no, seed: R.seed, settings: R.settings, wx: R.wx, clock: R.clock, startAt: R.startAt, cars: R.grid.map((id, slot) => { const m = who(id); return m && { id, slot, name: m.name, car: m.car, color: m.color, bot: !!m.bot }; }).filter(Boolean) };
   }
 
   onPose(m, dv) {

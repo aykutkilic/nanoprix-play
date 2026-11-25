@@ -103,11 +103,12 @@ export class Course {
     const hubs = reverse ? [def.hubs[0], ...def.hubs.slice(1).reverse()] : def.hubs;
     const path = net.pathRoads(hubs), pts = [];
     this.only = new Set(path.map(([r]) => r.index));
-    for (const [r, dir] of path) for (let k = 0; k + 1 < r.n; k++) { const i = dir > 0 ? k : r.n - 1 - k; pts.push([r.p[i * 3], r.p[i * 3 + 1], r.p[i * 3 + 2], r.hw, r.index, r.tunnel ? r.tunnel[i] : 0, r.bus ? 1 : 0]); }
+    for (const [r, dir] of path) for (let k = 0; k + 1 < r.n; k++) { const i = dir > 0 ? k : r.n - 1 - k; pts.push([r.p[i * 3], r.p[i * 3 + 1], r.p[i * 3 + 2], r.hw, r.index, r.tunnel ? r.tunnel[i] : 0, r.bus ? 1 : 0, r.tram ? 1 : 0]); }
     this.n = pts.length;
     this.x = Float32Array.from(pts, (p) => p[0]); this.z = Float32Array.from(pts, (p) => p[1]); this.h = Float32Array.from(pts, (p) => p[2]); this.hw = Float32Array.from(pts, (p) => p[3]); this.road = Uint16Array.from(pts, (p) => p[4]);
     this.tunnel = Uint8Array.from(pts, (p) => p[5]);
     this.bus = Float32Array.from(pts, (p) => p[6]); for (let k = 0; k < 6; k++) { const o = this.bus.slice(); for (let i = 0; i < this.n; i++) this.bus[i] = (o[(i - 1 + this.n) % this.n] + o[i] + o[(i + 1) % this.n]) / 3; } // (the metrobüs has the middle of it: traffic keeps out)
+    this.tram = Float32Array.from(pts, (p) => p[7]); for (let k = 0; k < 6; k++) { const o = this.tram.slice(); for (let i = 0; i < this.n; i++) this.tram[i] = (o[(i - 1 + this.n) % this.n] + o[i] + o[(i + 1) % this.n]) / 3; } // (and of these a tram)
     this.s = new Float32Array(this.n + 1);
     for (let i = 0; i < this.n; i++) { const j = (i + 1) % this.n; this.s[i + 1] = this.s[i] + Math.hypot(this.x[j] - this.x[i], this.z[j] - this.z[i]); }
     this.len = this.s[this.n];

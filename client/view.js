@@ -80,17 +80,18 @@ export class View {
   }
   // follow a car; dt in s
   follow(c, dt, back = false) {
-    if (CAMS[this.cam.mode] === 'iso') { this.isometric(c, dt); return; }
+    const rig = this.rig, deep = !!rig && (rig.kind === 'tube' || rig.kind === 'hall'); if (CAMS[this.cam.mode] === 'iso' && !deep) { this.isometric(c, dt); return; }
     this.usePersp(); this.look = null;
-    const K = this.cam, m = CAMS[K.mode], v = Math.hypot(c.vx, c.vz), dir = v > 1.2 ? Math.atan2(c.vx, c.vz) : c.yaw;
+    const K = this.cam, m = deep ? 'chase' : CAMS[K.mode], v = Math.hypot(c.vx, c.vz), dir = v > 1.2 ? Math.atan2(c.vx, c.vz) : c.yaw;
     let d = dir - c.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) > 1.8) d = 0;
     const want = c.yaw + d * 0.45 + (back ? Math.PI : 0);
     if (!K.init) { K.yaw = want; }
     let e = want - K.yaw; e = Math.atan2(Math.sin(e), Math.cos(e)); K.yaw += e * Math.min(1, dt * (back ? 30 : m === 'diorama' || m === 'top' ? 2.2 : 6.2));
-    const S = { chase: [3.7 + v * 0.05, 1.55 + v * 0.012, 2.4, 58 + v * 0.9, 0.35], near: [2.35 + v * 0.03, 0.85, 3.2, 64 + v * 0.9, 0.3], diorama: [13.5 + v * 0.16, 11.5 + v * 0.1, 3.2 + v * 0.16, 34, 0], top: [5.5, 26 + v * 0.3, 2 + v * 0.25, 36, 0] }[m]; if (this.aboard && (m === 'chase' || m === 'near')) { S[0] = 9.5; S[1] = 4.6; S[2] = 1; S[3] = 52; S[4] = 0.6; } const sx = Math.sin(K.yaw), sz = Math.cos(K.yaw);
+    const S = { chase: [3.7 + v * 0.05, 1.55 + v * 0.012, 2.4, 58 + v * 0.9, 0.35], near: [2.35 + v * 0.03, 0.85, 3.2, 64 + v * 0.9, 0.3], diorama: [13.5 + v * 0.16, 11.5 + v * 0.1, 3.2 + v * 0.16, 34, 0], top: [5.5, 26 + v * 0.3, 2 + v * 0.25, 36, 0] }[m]; if (this.aboard && (m === 'chase' || m === 'near')) { S[0] = 9.5; S[1] = 4.6; S[2] = 1; S[3] = 52; S[4] = 0.6; } if (rig && (m === 'chase' || m === 'near')) { const q = { walk: [2.3, 0.95, 1.5, 58, 0.3], hall: [2.0, 0.75, 1.6, 64, 0.3], bus: [5.2, 2.2, 2.4, 58, 0.5], train: [9, 3.4, 4, 56, 0.7], tube: [3.0, 0.8, 4, 66, 0.4] }[rig.kind]; for (let k = 0; k < 5; k++) S[k] = q[k]; } const sx = Math.sin(K.yaw), sz = Math.cos(K.yaw);
     const zm = m === 'diorama' || m === 'top' ? this.zoom : 1, px = c.x - sx * S[0] * zm, pz = c.z - sz * S[0] * zm; let py = c.y + S[1] * zm;
-    if (this.world && !(this.under && (m === 'chase' || m === 'near'))) py = Math.max(py, this.world.height(px, pz) + 0.5);
+    if (this.world && !deep && !(this.under && (m === 'chase' || m === 'near'))) py = Math.max(py, this.world.height(px, pz) + 0.5);
     let qx = px, qz = pz; if (this.under && (m === 'chase' || m === 'near')) { const n = this.world.net, q = n.at(px, pz, c.y + 0.15, null, (this.q0 ||= {})); if (q && q.road.tunnel) { const i = q.i * 3, P = q.road.p, cx = P[i] + (P[i + 3] - P[i]) * q.t, cz = P[i + 1] + (P[i + 4] - P[i + 1]) * q.t, k = q.d > 1.1 ? 1.1 / q.d : 1; qx = cx + (px - cx) * k; qz = cz + (pz - cz) * k; py = Math.min(py, q.h + 1.42); } }
+    if (deep && rig.kind === 'tube') { const p = rig.back(back ? -2 : S[0]); qx = p.x; qz = p.z; py = p.y + S[1]; } else if (deep) { const f = rig.f, dx = px - f[0], dz = pz - f[2], al = Math.max(-8, Math.min(8, dx * f[3] + dz * f[4])), g = rig.way.frame(rig.s + al), u = Math.max(-1.72, Math.min(1.72, -(px - g[0]) * g[4] + (pz - g[2]) * g[3])); qx = g[0] - g[4] * u; qz = g[2] + g[3] * u; py = Math.min(py, g[1] + 1.5); }
     const a = K.init ? Math.min(1, dt * 14) : 1, ay = K.init ? Math.min(1, dt * 7) : 1;
     K.pos.x += (qx - K.pos.x) * a; K.pos.z += (qz - K.pos.z) * a; K.pos.y += (py - K.pos.y) * ay;
     const lx = c.x + sx * S[2], lz = c.z + sz * S[2], ly = c.y + S[4] + 0.25; if (!K.init) K.look.set(lx, ly, lz); K.look.x += (lx - K.look.x) * Math.min(1, dt * 16); K.look.z += (lz - K.look.z) * Math.min(1, dt * 16); K.look.y += (ly - K.look.y) * Math.min(1, dt * 8);

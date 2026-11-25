@@ -9,6 +9,7 @@ import * as THREE from './vendor/three.module.min.js';
 import { rng, noiseTexture } from './realism.js';
 import { weathered } from './weather.js';
 import { pack, handOver } from './gpu.js';
+import { readHouses } from './assets.js';
 
 const K = { house: 0, flats: 1, old: 2, office: 3, glass: 4, tower: 5, shops: 6, works: 7, public: 8, yali: 9, mosque: 10, church: 11, hotel: 12 };
 const TILE = 60, lin = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
@@ -22,14 +23,18 @@ const TILES = ['#a5573a', '#b0654a', '#96503a', '#b87a58', '#8a4a34', '#a86a4c']
 const AWN = ['#b3372f', '#2f6a4a', '#2d5a94', '#c98a2a', '#7a3a5a', '#3a3f44'].map(lin);
 
 export function buildBuildings(W) {
-  const { root, A, night } = W, B = A.buildings, count = A.buildingCount, tiles = new Map();
-  for (let k = 0, o = 0; k < count; k++) {
-    const x = B[o] / 20, z = B[o + 1] / 20, n = B[o + 5] & 255, key = Math.floor(x / TILE) * 4096 + Math.floor(z / TILE);
-    let t = tiles.get(key); if (!t) tiles.set(key, (t = { x: (Math.floor(x / TILE) + 0.5) * TILE, z: (Math.floor(z / TILE) + 0.5) * TILE, at: [], base: null, fine: null, used: 0 })); t.at.push(o);
-    if (W.coast(x, z) < 4) W.light(x, z, 0.9, 0.16);
-    o += 6 + n * 2;
-  }
-  const list = [...tiles.values()];
+  const { A, night } = W, tiles = new Map(), list = []; W.houses = []; W.buildings = 0;
+  // a piece of the city has come
+  A.stream.on('h', (t, b) => {
+    const { n: count, B } = readHouses(b, A.map); let sea = false;
+    for (let k = 0, o = 0; k < count; k++) {
+      const x = B[o] / 20, z = B[o + 1] / 20, n = B[o + 5] & 255, key = Math.floor(x / TILE) * 4096 + Math.floor(z / TILE);
+      let t = tiles.get(key); if (!t) { tiles.set(key, (t = { x: (Math.floor(x / TILE) + 0.5) * TILE, z: (Math.floor(z / TILE) + 0.5) * TILE, B, at: [], base: null, fine: null, used: 0 })); list.push(t); } t.at.push(o);
+      if (W.coast(x, z) < 4) { W.light(x, z, 0.9, 0.16); sea = true; }
+      o += 6 + n * 2;
+    }
+    W.houses.push({ t, B, n: count }); W.buildings += count; if (sea) W.lampsAt = performance.now() + 1500;
+  });
   // ------------------------------------------------------------ the fronts
   const wall = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
   wall.onBeforeCompile = (s) => {
@@ -126,7 +131,7 @@ export function buildBuildings(W) {
   };
   const parapet = (w, t, q, y, h, c, roofC) => { const n = inset(q, 0.06); for (let i = 0; i < q.length; i++) { const j = (i + 1) % q.length, a = q[i], b = q[j]; quad(t, [a[0], y, a[1]], [a[0], y + h, a[1]], [b[0], y + h, b[1]], [b[0], y, b[1]], c); if (n) { const o = n[i], p = n[j]; quad(t, [a[0], y + h, a[1]], [o[0], y + h, o[1]], [p[0], y + h, p[1]], [b[0], y + h, b[1]], [c[0] * 1.12, c[1] * 1.12, c[2] * 1.12]); quad(t, [p[0], y, p[1]], [p[0], y + h, p[1]], [o[0], y + h, o[1]], [o[0], y, o[1]], c); } } flat(t, n || q, y + 0.004, roofC, 2); };
   // one building into base (walls w, trim t) and, near, the fine things f
-  function raise(o, w, t, fine) {
+  function raise(B, o, w, t, fine) {
     const x = B[o] / 20, z = B[o + 1] / 20, y = B[o + 2] / 400, h = B[o + 3] / 200, kind = B[o + 4] & 255, roof = (B[o + 4] >> 8) & 255, n = B[o + 5] & 255, sd = (B[o + 5] >> 8) & 127, R = rng(sd * 7919 + Math.round(x * 13 + z * 7)), seed = R();
     const q = []; for (let k = 0; k < n; k++) q.push([x + B[o + 6 + k * 2] / 100, z + B[o + 7 + k * 2] / 100]);
     const f = frameOf(q), pal = PAL[kind], c = pal[Math.floor(R() * pal.length)], top = y + h, foot = y - 0.35, tile = TILES[Math.floor(R() * TILES.length)], small = Math.min(f.w, f.d), flatC = FLAT[Math.floor(R() * FLAT.length)], P = (u, v) => [f.cx + f.ax * u - f.az * v, f.cz + f.az * u + f.ax * v];
@@ -163,13 +168,12 @@ export function buildBuildings(W) {
   const geoW = (g) => { const b = new THREE.BufferGeometry(); b.setAttribute('position', new THREE.Float32BufferAttribute(g.pos, 3)); b.setAttribute('normal', new THREE.Float32BufferAttribute(g.nor, 3)); b.setAttribute('color', new THREE.Float32BufferAttribute(g.col, 3)); b.setAttribute('aF', new THREE.Float32BufferAttribute(g.F, 4)); b.setAttribute('aK', new THREE.Float32BufferAttribute(g.K, 2)); b.setIndex(g.idx); return pack(b); };
   const geoT = (g) => { const b = new THREE.BufferGeometry(); b.setAttribute('position', new THREE.Float32BufferAttribute(g.pos, 3)); b.setAttribute('normal', new THREE.Float32BufferAttribute(g.nor, 3)); b.setAttribute('color', new THREE.Float32BufferAttribute(g.col, 3)); b.setAttribute('aR', new THREE.Float32BufferAttribute(g.R, 1)); b.setIndex(g.idx); return pack(b, 'aR'); };
   const mesh = (geo, m) => { const o = new THREE.Mesh(geo, m); o.castShadow = o.receiveShadow = true; o.matrixAutoUpdate = false; geo.computeBoundingSphere(); handOver(geo); W.still.add(o); return o; };
-  function* makeBase(t) { const w = mk(), r = tr(); let n = 0; for (const o of t.at) { raise(o, w, r, null); if (++n % 5 === 0) yield; } yield; const a = geoW(w); yield; const b = geoT(r); yield; t.base = [mesh(a, wall), mesh(b, trim)]; }
-  function* makeFine(t) { const w = mk(), r = tr(), f = tr(); cumba = []; let n = 0; for (const o of t.at) { raise(o, w, r, f); if (++n % 4 === 0) yield; } yield; const cw = mk(); for (const [q, y0, y1, c, k, s] of cumba) { walls(cw, q, y0, y1, c, k, s, y0 - 0.42, y1 - y0 + 0.42); } yield; const L = []; if (f.idx.length) L.push(mesh(geoT(f), trim)); yield; if (cw.idx.length) L.push(mesh(geoW(cw), wall)); t.fine = L; }
+  function* makeBase(t) { const w = mk(), r = tr(); let n = 0; for (const o of t.at) { raise(t.B, o, w, r, null); if (++n % 5 === 0) yield; } yield; const a = geoW(w); yield; const b = geoT(r); yield; t.base = [mesh(a, wall), mesh(b, trim)]; }
+  function* makeFine(t) { const w = mk(), r = tr(), f = tr(); cumba = []; let n = 0; for (const o of t.at) { raise(t.B, o, w, r, f); if (++n % 4 === 0) yield; } yield; const cw = mk(); for (const [q, y0, y1, c, k, s] of cumba) { walls(cw, q, y0, y1, c, k, s, y0 - 0.42, y1 - y0 + 0.42); } yield; const L = []; if (f.idx.length) L.push(mesh(geoT(f), trim)); yield; if (cw.idx.length) L.push(mesh(geoW(cw), wall)); t.fine = L; }
   let job = null;
   const drop = (L) => { for (const o of L) { W.still.remove(o); o.geometry.dispose(); } };
   // (after a lost context: all that was handed over is made again)
   W.remake = () => { job = null; for (const t of list) { if (t.base) drop(t.base); if (t.fine) drop(t.fine); t.base = t.fine = null; } };
-  W.buildings = count;
   // what is near is made, nearest first, a little each frame; what is long out of sight goes
   W.updateBuildings = (cam, far, ms = 2.6) => {
     const t0 = performance.now(), want = []; let made = 0;

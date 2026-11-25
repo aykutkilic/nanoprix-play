@@ -2,14 +2,16 @@
 // a landing stage and for how long. The same for everybody; nothing is sent.
 const smooth = (t) => t * t * (3 - 2 * t), wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 export const SPEED = { classic: 4.2, motor: 4.6, seabus: 7.5, car_ferry: 6.2, dolmus: 4.6 }, DWELL = { classic: 14, motor: 9, seabus: 12, car_ferry: 18, dolmus: 7 };
+// what OSM's nearest name gets wrong, or has not: [x, z, name]
+const NAMES = [[359.5, 302.5, 'Kadıköy'], [348.5, 313.5, 'Kadıköy'], [316.5, 265.5, 'Haydarpaşa'], [67.5, -97.5, 'Galataport'], [222.5, -16.5, 'Kız Kulesi'], [205.5, -13.5, 'Salacak']];
 const EASE = 9; // seconds to gather way, and to lose it
 export class Fleet {
   constructor(data) {
-    this.data = data; this.ports = data.ports; this.ships = [];
+    this.data = data; this.ports = data.ports; this.ships = []; for (const [x, z, name] of NAMES) { const q = data.ports.find((p) => Math.hypot(p.x - x, p.z - z) < 1.5); if (q) q.name = name; } for (const p of data.ports) p.name = (p.name || '').replace(/ (iskelesi|Şehir Hatları|Motor)$/, '');
     data.lines.forEach((l, k) => {
       const n = l.p.length / 2, s = new Float32Array(n); for (let i = 1; i < n; i++) s[i] = s[i - 1] + Math.hypot(l.p[i * 2] - l.p[i * 2 - 2], l.p[i * 2 + 1] - l.p[i * 2 - 1]);
       const L = data.models[l.kind].L, half = L / 2, from = half, to = l.off ? s[n - 1] : s[n - 1] - half, v = SPEED[l.kind], run = to - from, e = Math.min(EASE, (run / v) * 0.9), T = run / v + e, dwell = DWELL[l.kind], cycle = 2 * (T + dwell), many = run > 420 && !l.off ? 2 : 1;
-      for (let q = 0; q < many; q++) this.ships.push({ line: l, k: this.ships.length, kind: l.kind, n, s, p: l.p, from, to, run, T, e, v, dwell, cycle, L, phase: ((k * 37.7) % cycle) + (q * cycle) / many, cars: !!l.cars, off: !!l.off, a: l.a, b: l.b });
+      for (let q = 0; q < many; q++) this.ships.push({ line: l, k: this.ships.length, kind: l.kind, n, s, p: l.p, from, to, run, T, e, v, dwell, cycle, L, phase: ((k * 37.7) % cycle) + (q * cycle) / many, cars: !!l.cars, off: !!l.off, a: l.a, b: l.b, miles: s[n - 1] / 185.2, open: !l.off && l.a >= 0 && l.b >= 0 && !/Kız Kulesi/.test(l.name) && data.ports[l.a].name !== '' && data.ports[l.b].name !== '' });
     });
     this.car = this.ships.filter((q) => q.cars);
   }

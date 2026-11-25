@@ -15,6 +15,7 @@ import { Weather } from './weather.js';
 import { CHOICES, WEATHER, mixWeather } from '../shared/weather.js';
 import { Audio } from './audio.js';
 import { Nav, NextSign } from './nav.js';
+import { Fly } from './fly.js';
 import { Music } from './music.js';
 import { Input } from './input.js';
 import { Net } from './net.js';
@@ -38,7 +39,7 @@ try {
   A = await loadAssets((file, n) => loading.bytes(file, n));
   net = new Network(A.roads); new Streets(net, A.streets); view = new View($('#gl')); await new Promise((r) => setTimeout(r, 20));
   view.world = await buildWorld(view.scene, A, net, (s) => loading.stage(s)); view.applyNight(0);
-  hud = new Hud(hudEl, A, net); audio = new Audio(); music = new Music(audio); music.later = () => !music.el && (A.stream.holds.length > 0 || A.stream.share < 0.35); music.told = (n) => toast(`♪ ${n}`, 2600); fx = new Fx(view.scene); input = new Input(document.body); weather = new Weather(view.scene, view.world, fx, audio); view.world.sea = (x, z) => weather.sea(x, z); game = new Game({ view, net, hud, audio, fx, input, weather }); game.nav = new Nav(game, $('#find')); game.nextSign = new NextSign(hud, view.world.signs, net); view.warm();
+  hud = new Hud(hudEl, A, net); audio = new Audio(); music = new Music(audio); music.later = () => !music.el && (A.stream.holds.length > 0 || A.stream.share < 0.35); music.told = (n) => toast(`♪ ${n}`, 2600); fx = new Fx(view.scene); input = new Input(document.body); weather = new Weather(view.scene, view.world, fx, audio); view.world.sea = (x, z) => weather.sea(x, z); game = new Game({ view, net, hud, audio, fx, input, weather }); game.fly = new Fly(game, view.renderer.domElement); game.nav = new Nav(game, $('#find')); game.nextSign = new NextSign(hud, view.world.signs, net); view.warm();
 } catch (e) { loading.fail(e.message); throw e; }
 loading.done(); ui.innerHTML = '';
 
@@ -143,8 +144,8 @@ ui.addEventListener('click', async (e) => {
 });
 ui.addEventListener('input', (e) => { if (e.target.id === 'name') { const p = sanitizeProfile({ ...profile, name: e.target.value }); profile.name = p.name; sendProfile(); } });
 ui.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'code') join(e.target.value); e.stopPropagation(); });
-const cam = (e) => { if (e && e.preventDefault) e.preventDefault(); if (game.active) toast(t(view.nextCam()), 900); };
-input.on('F2', cam); input.on('KeyC', cam); input.on('ArrowLeft', () => game.pickWatch(-1)); input.on('ArrowRight', () => game.pickWatch(1)); input.on('KeyG', () => game.toggleAuto()); input.on('KeyE', () => game.trip.act()); input.on('KeyF', (e) => game.nav.show(e)); input.on('Slash', (e) => game.nav.show(e)); input.on('KeyQ', () => { if (game.active && game.trip.hall) game.trip.up(); }); input.on('Tab', (e) => { if (!game.active || !game.stats) return; e.preventDefault(); if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); game.showFull(); }); input.on('KeyT', () => { if (game.active && game.stats) game.nextMode(); });
+const cam = (e) => { if (e && e.preventDefault) e.preventDefault(); if (game.active && !game.fly.on) toast(t(view.nextCam()), 900); };
+input.on('F2', cam); input.on('KeyC', cam); input.on('ArrowLeft', () => game.pickWatch(-1)); input.on('ArrowRight', () => game.pickWatch(1)); input.on('KeyX', () => { if (game.active && game.cabin) game.cabin.turn(); }); input.on('KeyG', () => game.toggleAuto()); input.on('KeyE', () => game.trip.act()); input.on('KeyF', (e) => game.nav.show(e)); input.on('Slash', (e) => game.nav.show(e)); input.on('KeyQ', () => { if (game.active && game.trip.hall) game.trip.up(); }); input.on('Tab', (e) => { if (!game.active || !game.stats) return; e.preventDefault(); if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); game.showFull(); }); input.on('KeyT', () => { if (game.active && game.stats) game.nextMode(); });
 ui.addEventListener('pointermove', hover); ui.addEventListener('pointerleave', hover);
 input.on('KeyV', () => { if (!game.active || !room || room.hostId !== myId) return; const i = CHOICES.indexOf(game.wx.to); link.send({ t: 'weather', weather: CHOICES[(i + 1) % CHOICES.length] }); }); input.on('KeyN', () => { if (game.active) game.toggleNight(); else menuNight = menuNight ? 0 : 1; }); input.on('KeyR', () => game.reset());
 input.on('KeyM', () => { music.toggle(!music.on); toast(music.on ? `♪ ${music.name}` : '♪ ✕', 1600); if (settingsOpen) draw(); });

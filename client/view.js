@@ -5,7 +5,8 @@ import { SUN_DIR, HAZE, NIGHT_HAZE, QUALITY, Post, FrameWatch, startQuality, mak
 import { WEATHER } from '../shared/weather.js';
 import { cut } from './weather.js';
 import { forget } from './gpu.js';
-export const CAMS = ['chase', 'near', 'diorama', 'iso', 'top'];
+export const CAMS = ['chase', 'near', 'inside', 'diorama', 'iso', 'top'];
+const THIN = { diorama: 0.42, top: 0.42 }; // (from high up the fog is thinner)
 const DUSK = new THREE.Color().setRGB(0.95, 0.52, 0.30), tmpC = new THREE.Color();
 export class View {
   constructor(el) {
@@ -60,15 +61,23 @@ export class View {
     this.scene.fog.color.copy(HAZE).lerp(tmpC.copy(GREY).lerp(WHITE, w.snow * 0.45), o * 0.9).lerp(tmpC.copy(NIGHT_HAZE).lerp(NIGHT_GREY, o).multiplyScalar(1 + Math.min(0.9, w.fog * 45)), k).lerp(tmpC.copy(DUSK).multiplyScalar(0.5), dusk * 0.35);
     if (fl > 0) this.scene.fog.color.lerp(tmpC.setRGB(0.75, 0.8, 0.95), fl * 0.3);
     U.uGround.value.copy(this.scene.fog.color);
-    this.fogDay = FOG + w.fog * [1, 1, 0.42, 1, 0.42][this.cam.mode]; this.scene.fog.density = this.camera === this.ortho ? 0.0004 + w.fog * 0.15 : this.fogDay;
+    this.fogDay = FOG + w.fog * (this.flying ? 0.42 : (THIN[CAMS[this.cam.mode]] ?? 1)); this.scene.fog.density = this.camera === this.ortho ? 0.0004 + w.fog * 0.15 : this.fogDay;
     this.sun.color.set('#ffe0b8').lerp(tmpC2.set('#ff9a52'), dusk * 0.8).lerp(tmpC2.set('#c9d4e2'), o * (1 - k)).lerp(tmpC2.set('#8fb0ff'), Math.max(0, k * 2 - 1));
     this.sun.intensity = mix(3.9, 0.9) * (1 - 0.84 * o) + fl * 3.2; this.hemi.intensity = mix(1.25 + o * 0.75, 0.16 + o * 0.05) + fl * 1.4; this.hemi.color.set('#cfe0f2').lerp(tmpC2.set('#d7dbe0'), o).lerp(tmpC2.set('#6f86c8'), k); this.hemi.groundColor.set('#a08a6c').lerp(tmpC2.set('#e2e6ec'), w.snow * 0.8 * (1 - k)).lerp(tmpC2.set('#3a2a1e'), k);
     this.post.exposure = mix(1.32 - w.snow * 0.16, 1.25); this.renderer.toneMappingExposure = this.post.exposure * 0.6; this.post.bloom = mix(0.2 + o * 0.06, 0.42 + o * 0.08);
     if (this.world && this.nightSet !== k) { this.nightSet = k; this.world.setNight(k); }
   }
-  nextCam() { this.cam.mode = (this.cam.mode + 1) % CAMS.length; this.cam.init = false; try { localStorage.setItem('nanoprix.cam', CAMS[this.cam.mode]); } catch { /* */ } return CAMS[this.cam.mode]; }
+  nextCam() { this.cam.mode = (this.cam.mode + 1) % CAMS.length; this.cam.init = false; try { localStorage.setItem(this.riding ? 'nanoprix.camRide' : 'nanoprix.cam', CAMS[this.cam.mode]); } catch { /* */ } return CAMS[this.cam.mode]; }
+  // as a passenger one has a camera of one's own: from inside, until one chooses another
+  ride(on) { if (!!this.riding === on) return; this.riding = on; let m = on ? 'inside' : 'chase'; try { m = localStorage.getItem(on ? 'nanoprix.camRide' : 'nanoprix.cam') || m; } catch { /* */ } this.cam.mode = Math.max(0, CAMS.indexOf(m)); this.cam.init = false; this.light(); }
+  // the camera in what one sits in (cabin.js), right where it is: nothing lags
+  within(c, dt, back) {
+    this.usePersp(0.05, 0.2); this.look = null; const K = this.cam, q = this.cabin, P = this.camera; P.position.copy(q.pos); P.quaternion.copy(q.quat); if (back) P.quaternion.multiply(tmpQ.setFromAxisAngle(tmpV.set(0, 1, 0), Math.PI)); K.pos.copy(q.pos); K.look.set(c.x, c.y, c.z); K.yaw = c.yaw; K.init = false;
+    const s = (K.shake = Math.max(0, K.shake - dt * 3)) * 0.012; P.position.x += (Math.random() - 0.5) * s; P.position.y += (Math.random() - 0.5) * s; const fov = 66 + (c.boosting ? 5 : 0); K.fov += (fov - K.fov) * Math.min(1, dt * 6); if (Math.abs(P.fov - K.fov) > 0.02) { P.fov = K.fov; P.updateProjectionMatrix(); }
+    this.shadowAt(c.x + Math.sin(c.yaw) * 12, c.y, c.z + Math.cos(c.yaw) * 12, 38); this.post.focus = 12; this.post.tilt = 0;
+  }
   // near: on foot the camera comes close to walls
-  usePersp(near = 0.35) { this.close = false; this.leaves(null); if (this.persp.near !== near) { this.persp.near = near; this.persp.updateProjectionMatrix(); } if (this.camera !== this.persp) { this.camera = this.persp; this.scene.fog.density = this.fogDay ?? FOG; } }
+  usePersp(near = 0.35, ao = 0.6) { this.post.ao.uniforms.uRadius.value = ao; this.close = false; this.leaves(null); if (this.persp.near !== near) { this.persp.near = near; this.persp.updateProjectionMatrix(); } if (this.camera !== this.persp) { this.camera = this.persp; this.scene.fog.density = this.fogDay ?? FOG; } }
   // the isometric view: no perspective, always from the south-east, so north is up to the left
   isometric(c, dt) {
     const K = this.cam, v = Math.hypot(c.vx, c.vz), a = K.init ? Math.min(1, dt * 5) : 1, lead = 0.42;
@@ -81,14 +90,15 @@ export class View {
   }
   // follow a car; dt in s
   follow(c, dt, back = false) {
+    if (this.cabin && CAMS[this.cam.mode] === 'inside') { this.within(c, dt, back); return; }
     const rig = this.rig, deep = !!rig && (rig.kind === 'tube' || rig.kind === 'hall'); if (CAMS[this.cam.mode] === 'iso' && !deep) { this.close = false; this.leaves(null); this.isometric(c, dt); return; }
-    this.usePersp(rig && rig.kind === 'walk' && rig.solid && /chase|near/.test(CAMS[this.cam.mode]) ? 0.14 : 0.35); this.look = null;
-    const K = this.cam, m = deep ? 'chase' : CAMS[K.mode], v = Math.hypot(c.vx, c.vz), dir = v > 1.2 ? Math.atan2(c.vx, c.vz) : c.yaw;
+    this.usePersp(rig && rig.kind === 'walk' && rig.solid && /chase|near|inside/.test(CAMS[this.cam.mode]) ? 0.14 : 0.35); this.look = null;
+    const K = this.cam, m = deep ? 'chase' : CAMS[K.mode] === 'inside' ? 'near' : CAMS[K.mode], v = Math.hypot(c.vx, c.vz), dir = v > 1.2 ? Math.atan2(c.vx, c.vz) : c.yaw;
     let d = dir - c.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) > 1.8) d = 0;
     const want = c.yaw + d * 0.45 + (back ? Math.PI : 0);
     if (!K.init) { K.yaw = want; }
     let e = want - K.yaw; e = Math.atan2(Math.sin(e), Math.cos(e)); K.yaw += e * Math.min(1, dt * (back ? 30 : m === 'diorama' || m === 'top' ? 2.2 : 6.2));
-    const S = { chase: [3.7 + v * 0.05, 1.55 + v * 0.012, 2.4, 58 + v * 0.9, 0.35], near: [2.35 + v * 0.03, 0.85, 3.2, 64 + v * 0.9, 0.3], diorama: [13.5 + v * 0.16, 11.5 + v * 0.1, 3.2 + v * 0.16, 34, 0], top: [5.5, 26 + v * 0.3, 2 + v * 0.25, 36, 0] }[m]; if (this.aboard && (m === 'chase' || m === 'near')) { S[0] = 9.5; S[1] = 4.6; S[2] = 1; S[3] = 52; S[4] = 0.6; } if (rig && (m === 'chase' || m === 'near')) { const q = { walk: [2.3, 0.95, 1.5, 58, 0.3], hall: [2.0, 0.75, 1.6, 64, 0.3], bus: [5.2, 2.2, 2.4, 58, 0.5], train: [9, 3.4, 4, 56, 0.7], tube: [3.0, 0.8, 4, 66, 0.4] }[rig.kind]; for (let k = 0; k < 5; k++) S[k] = q[k]; } const sx = Math.sin(K.yaw), sz = Math.cos(K.yaw);
+    const S = { chase: [3.7 + v * 0.05, 1.55 + v * 0.012, 2.4, 58 + v * 0.9, 0.35], near: [2.35 + v * 0.03, 0.85, 3.2, 64 + v * 0.9, 0.3], diorama: [13.5 + v * 0.16, 11.5 + v * 0.1, 3.2 + v * 0.16, 34, 0], top: [5.5, 26 + v * 0.3, 2 + v * 0.25, 36, 0] }[m]; if (this.aboard && (m === 'chase' || m === 'near')) { S[0] = 9.5; S[1] = 4.6; S[2] = 1; S[3] = 52; S[4] = 0.6; } if (rig && (m === 'chase' || m === 'near')) { const q = { walk: [2.3, 0.95, 1.5, 58, 0.3], ship: [9.5, 4.6, 1, 52, 0.6], hall: [2.0, 0.75, 1.6, 64, 0.3], bus: [5.2, 2.2, 2.4, 58, 0.5], train: [9, 3.4, 4, 56, 0.7], tube: [3.0, 0.8, 4, 66, 0.4] }[rig.kind]; for (let k = 0; k < 5; k++) S[k] = q[k]; } const sx = Math.sin(K.yaw), sz = Math.cos(K.yaw);
     const shy = !!rig && rig.kind === 'walk' && !!rig.solid && (m === 'chase' || m === 'near'), eyeY = c.y + 0.42; let px0 = 0, pz0 = 0; if (shy) this.swing(c, rig.solid, S, eyeY, dt); else K.swing = K.side = 0; { const y = K.yaw + (K.swing || 0); px0 = Math.sin(y); pz0 = Math.cos(y); }
     const zm = m === 'diorama' || m === 'top' ? this.zoom : 1, px = c.x - px0 * S[0] * zm, pz = c.z - pz0 * S[0] * zm; let py = c.y + S[1] * zm;
     if (this.world && !deep && !(this.under && (m === 'chase' || m === 'near'))) py = Math.max(py, this.world.height(px, pz) + 0.5);
@@ -111,6 +121,13 @@ export class View {
     const K = this.cam; let best = -9, off = 0; for (let k = -4; k <= 4; k++) { const a = k * 0.36, w = K.yaw + a, t = solid.sight(c.x, y, c.z, c.x - Math.sin(w) * S[0], c.y + S[1], c.z - Math.cos(w) * S[0]), s = t - Math.abs(a) * 0.28 - (solid.post(c.x, c.z, c.x - Math.sin(w) * S[0], c.z - Math.cos(w) * S[0], y + 0.2) ? 0.25 : 0) + (k === (K.side || 0) ? 0.1 : 0); if (s > best) { best = s; off = k; } }
     K.side = off; const w = off * 0.36; K.swing = K.init ? (K.swing || 0) + (w - (K.swing || 0)) * Math.min(1, dt * 4) : w;
   }
+  // airplane mode (fly.js): the camera is where one flies
+  fly(q) {
+    this.usePersp(); this.look = null; const c = this.camera, cp = Math.cos(q.pitch), sx = Math.sin(q.yaw) * cp, sy = Math.sin(q.pitch), sz = Math.cos(q.yaw) * cp;
+    c.position.set(q.x, q.y, q.z); c.lookAt(q.x + sx, q.y + sy, q.z + sz); if (c.fov !== 72) { c.fov = 72; c.updateProjectionMatrix(); }
+    const g = Math.max(0, this.world.height(q.x, q.z)), up = q.y - g, R = Math.min(150, 42 + up * 0.9), d = R * 0.7; this.shadowAt(q.x + Math.sin(q.yaw) * d, g, q.z + Math.cos(q.yaw) * d, Math.round(R / 12) * 12);
+    this.post.focus = 20; this.post.tilt = 0;
+  }
   shadowAt(x, y, z, R = 42) {
     if (R > 150) R = 150; const s = this.sun, n = s.shadow.mapSize.x, step = (2 * R) / n; // (stepped, so the edges do not crawl)
     const k = 8 * step; x = Math.round(x / k) * k; z = Math.round(z / k) * k;
@@ -132,4 +149,4 @@ export class View {
     if (this.watch) this.watch.frame(now);
   }
 }
-const tmpV = new THREE.Vector3(), ISO = new THREE.Vector3(1, Math.SQRT2 * Math.tan(Math.asin(1 / Math.sqrt(3))), 1).normalize(), FOG = 0.0021, CALM = WEATHER.clear, GREY = new THREE.Color().setRGB(0.52, 0.55, 0.58), WHITE = new THREE.Color().setRGB(0.78, 0.81, 0.85), NIGHT_GREY = new THREE.Color().setRGB(0.062, 0.060, 0.064), tmpC2 = new THREE.Color();
+const tmpQ = new THREE.Quaternion(), tmpV = new THREE.Vector3(), ISO = new THREE.Vector3(1, Math.SQRT2 * Math.tan(Math.asin(1 / Math.sqrt(3))), 1).normalize(), FOG = 0.0021, CALM = WEATHER.clear, GREY = new THREE.Color().setRGB(0.52, 0.55, 0.58), WHITE = new THREE.Color().setRGB(0.78, 0.81, 0.85), NIGHT_GREY = new THREE.Color().setRGB(0.062, 0.060, 0.064), tmpC2 = new THREE.Color();

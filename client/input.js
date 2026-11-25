@@ -1,10 +1,11 @@
+const FLYING = /^(Escape|Tab|Key[NVMT])$/; // what keys still do in airplane mode, besides flying
 // Keyboard, gamepad, touch → { steer, gas, brake, drift, turbo, horn, back }
 export class Input {
   constructor(el) {
     this.keys = new Set(); this.handlers = {}; this.touch = { steer: 0, gas: 0, brake: 0, drift: false, turbo: false }; this.out = { steer: 0, gas: 0, brake: 0, drift: false, turbo: false, horn: false, back: false };
     const typing = (e) => /INPUT|TEXTAREA|SELECT/.test(e.target.tagName);
-    addEventListener('keydown', (e) => { if (typing(e)) return; if (/^(Arrow|Space)/.test(e.code) && document.activeElement?.tagName !== 'BUTTON') e.preventDefault(); if (!e.repeat) { this.keys.add(e.code); const h = this.handlers[e.code]; if (h) h(e); } });
-    addEventListener('keyup', (e) => this.keys.delete(e.code)); addEventListener('blur', () => this.keys.clear());
+    addEventListener('keydown', (e) => { if (typing(e)) return; if (/^(Arrow|Space)/.test(e.code) && document.activeElement?.tagName !== 'BUTTON') e.preventDefault(); if (!e.repeat) { if (!e.metaKey) this.keys.add(e.code); const h = this.flying && !FLYING.test(e.code) ? null : this.handlers[e.code]; if (h) h(e); } });
+    addEventListener('keyup', (e) => { if (/^Meta/.test(e.code)) this.keys.clear(); else this.keys.delete(e.code); }); /* (a Mac does not say what is let go of while ⌘ is down) */ addEventListener('blur', () => this.keys.clear());
     if (matchMedia('(pointer: coarse)').matches) this.buildTouch(el);
   }
   on(code, fn) { this.handlers[code] = fn; }
@@ -18,6 +19,7 @@ export class Input {
   }
   // (touch: the gas is on by itself while racing)
   read() {
+    if (this.flying) return Object.assign(this.out, { steer: 0, gas: 0, brake: 0, drift: false, turbo: false, horn: false, back: false });
     const k = this.keys, o = this.out, has = (...c) => c.some((x) => k.has(x));
     let s = (has('ArrowRight', 'KeyD') ? 1 : 0) - (has('ArrowLeft', 'KeyA') ? 1 : 0), g = has('ArrowUp', 'KeyW') ? 1 : 0, b = has('ArrowDown', 'KeyS') ? 1 : 0, d = has('Space'), t = has('ShiftLeft', 'ShiftRight'), h = has('KeyH'), back = has('KeyB');
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];

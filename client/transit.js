@@ -141,13 +141,13 @@ export function buildTransit(W) {
   W.updates.push((dt, now, cam, far) => {
     const T = W.shipTime ?? now / 1000, reach = Math.min(far || 400, 520); for (const o of all) o.count = 0; LM.count = 0;
     TR.each(cam.x, cam.z, T, reach, (p, run, w, mid0) => {
-      const W1 = p.way, K = W1.K, l = w.l; if (W1.kind === 'rail' || W1.kind === 'metro' || W1.kind === 'fun' || W1.kind === 'tram' || W1.kind === 'old') {
-        const C = K.cars, t = tintOf(W1.color || '#1c4f9c'); if (W1.kind === 'old') { stand(F.old, l, 0, 0.5, false, W1, t); return; } for (let c = 0; c < C; c++) { const d = ((C - 1) / 2 - c) * K.pitch, e = c === 0 || c === C - 1, o = W1.kind === 'rail' ? (e ? F.end : F.mid) : W1.kind === 'metro' ? (e ? F.mEnd : F.mMid) : W1.kind === 'fun' ? F.fEnd : e ? F.tEnd : F.tMid; stand(o, l, d, K.pitch * 0.33, c === C - 1, W1, t); }
-        if (W1.kind === 'tram' && mid0.st !== 2) { led(p.ref, l, K.pitch, W1, false, 0.69, 0.865); led(p.ref, l, -K.pitch, W1, true, 0.69, 0.865); } return;
+      const W1 = p.way, K = W1.K, l = w.l, mine = !!W.inside && !!W.inside.p && W.inside.p === p && W.inside.run === run; /* (sat in: cabin.js draws its first car) */ if (!mine && W.inside && W.inside.p && W.inside.p.way === W1 && W.inside.p.d === p.d && Math.abs(l - W.inside.l) < (K.cars || 1.2) * (K.pitch || 1.4) * 0.8) return; /* (what a timetable has in the very same place) */ if (W1.kind === 'rail' || W1.kind === 'metro' || W1.kind === 'fun' || W1.kind === 'tram' || W1.kind === 'old') {
+        const C = K.cars, t = tintOf(W1.color || '#1c4f9c'); if (W1.kind === 'old') { if (!mine) stand(F.old, l, 0, 0.5, false, W1, t); return; } for (let c = mine ? 1 : 0; c < C; c++) { const d = ((C - 1) / 2 - c) * K.pitch, e = c === 0 || c === C - 1, o = W1.kind === 'rail' ? (e ? F.end : F.mid) : W1.kind === 'metro' ? (e ? F.mEnd : F.mMid) : W1.kind === 'fun' ? F.fEnd : e ? F.tEnd : F.tMid; stand(o, l, d, K.pitch * 0.33, c === C - 1, W1, t); }
+        if (W1.kind === 'tram' && mid0.st !== 2) { if (!mine) led(p.ref, l, K.pitch, W1, false, 0.69, 0.865); led(p.ref, l, -K.pitch, W1, true, 0.69, 0.865); } return;
       }
       if (TR.held(mid0.x, mid0.z)) return; const x = mid0.x, z = mid0.z; void x; void z;
-      if (W1.kind === 'mbus') { stand(F.fr1, l, 0.84, 0.62, false, W1); stand(F.re1, l, -0.88, 0.5, false, W1); stand(F.bl, l, -0.08, 0.2, false, W1); led(p.ref, l, 0.84, W1, false, 0.82, 0.9); }
-      else { stand(F.bus, l, 0, 0.5, false, W1, tintOf(LIVERY[(p.no * 7 + run) % LIVERY.length])); led(p.ref, l, 0, W1, false, 0.71, 0.885); }
+      if (W1.kind === 'mbus') { if (!mine) stand(F.fr1, l, 0.84, 0.62, false, W1); stand(F.re1, l, -0.88, 0.5, false, W1); stand(F.bl, l, -0.08, 0.2, false, W1); if (!mine) led(p.ref, l, 0.84, W1, false, 0.82, 0.9); }
+      else if (!mine) { stand(F.bus, l, 0, 0.5, false, W1, tintOf(LIVERY[(p.no * 7 + run) % LIVERY.length])); led(p.ref, l, 0, W1, false, 0.71, 0.885); }
     });
     for (const o of all) { o.visible = o.count > 0; if (o.count) { o.instanceMatrix.needsUpdate = true; o.tint.needsUpdate = true; } } LM.visible = LM.count > 0; if (LM.count) { LM.instanceMatrix.needsUpdate = true; cellA.needsUpdate = true; } void tc;
   });

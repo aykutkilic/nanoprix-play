@@ -24,7 +24,7 @@ export const CHUNK = 64; // grid cells across a piece of ground
 export async function buildWorld(scene, A, net, onStage = () => {}) {
   const root = new THREE.Group(), still = new Still(); scene.add(root); root.add(still);
   const g = A.map.grid, M0 = A.map.map, { height, coast } = A.ground;
-  const night = { value: 0 }, time = { value: 0 }, W = { keeper: new Keeper(), still, mouths: { value: [0, 1, 2, 3].map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, glow: [], spots: [], updates: [], A };
+  const night = { value: 0 }, time = { value: 0 }, W = { keeper: new Keeper(), still, mouths: { value: net.roads.filter((r) => r.tunnel).flatMap(() => [0, 1]).map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, glow: [], spots: [], updates: [], A };
   W.transit = net.transit = new Transit({ ...A.transit, islands: A.roads.islands }, A.lines);
   W.lit = (m, color, k) => { m.emissive = new THREE.Color(color); m.emissiveIntensity = 0; W.glow.push([m, k]); return m; };
   W.mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, ...o });
@@ -41,9 +41,9 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   ground.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, { uNight: night, uNoise: { value: noiseTexture() }, uShore: { value: shoreTex }, uPark: { value: parkTex }, uUrban: { value: urbanTex }, uArea: { value: area }, uMouth: W.mouths });
     s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vW; varying float vUpN;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvW = position; vUpN = normal.y;');
-    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uMouth[4];\nuniform sampler2D uNoise, uShore, uPark, uUrban; uniform vec4 uArea; uniform float uNight; varying vec3 vW; varying float vUpN; float gBump; float gUrban;')
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uMouth[' + W.mouths.value.length + '];\nuniform sampler2D uNoise, uShore, uPark, uUrban; uniform vec4 uArea; uniform float uNight; varying vec3 vW; varying float vUpN; float gBump; float gUrban;')
       .replace('#include <map_fragment>', `
-        for (int k = 0; k < 4; k++) { vec2 md = vW.xz - uMouth[k].xy; float al = dot(md, uMouth[k].zw), la = abs(dot(md, vec2(-uMouth[k].w, uMouth[k].z))); if (al > -1.2 && al < 13.0 && la < 2.5) discard; } // (the mouths of the tunnel)
+        for (int k = 0; k < ${W.mouths.value.length}; k++) { vec2 md = vW.xz - uMouth[k].xy; float al = dot(md, uMouth[k].zw), la = abs(dot(md, vec2(-uMouth[k].w, uMouth[k].z))); if (al > -1.2 && al < 13.0 && la < 2.5) discard; } // (the mouths of the tunnel)
         vec2 auv = (vW.xz - uArea.xy) / uArea.zw;
         vec2 tp = vW.xz + vW.y * vec2(1.3, 0.8);
         vec4 n0 = texture2D(uNoise, tp * 0.006), n1 = texture2D(uNoise, tp * 0.026), n2 = texture2D(uNoise, tp * 0.12), n3 = texture2D(uNoise, tp * 0.55);

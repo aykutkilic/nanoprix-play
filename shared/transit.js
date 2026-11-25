@@ -2,6 +2,7 @@
 // alone (shared/clock.js) and on the timetables (assets/lines.json: tools/lines.mjs), so
 // everybody sees the same and nothing is sent.
 import { RATE, dayType } from './clock.js';
+import { unpackEntry } from './entries.js';
 export { RATE };
 // lat: how far to the right of the line each way is (the metrobüs keeps to the left: its doors are on the right, the platform is between the ways)
 export const KIND = {
@@ -81,6 +82,7 @@ export class Transit {
       const l = new Line(d); for (const q of d.dirs) l.pats.push(new Service(l, q)); this.lines.push(l);
     }
     if (lines && this.rail) for (const q of this.rail.stops) { const e = (lines.marmaray || {})[q.name]; if (e) Object.assign(q, e); }
+    for (const e of data.entries || []) { const l = this.lines.find((q) => q.id === e.way), q = l && l.stops[e.stop]; if (q && q.under) { q.door = e.door; q.entry = unpackEntry(e); } } // (a way down to it: shared/entries.js)
     this.ways = [...this.lines, ...this.streets]; this.services = this.ways.flatMap((w) => w.pats); this.services.forEach((p, i) => { p.no = i; });
     // what passes overhead, and where the rails lie, by place
     this.cells = new Map(); const add = (x, z, y, w, deck) => { const k = Math.floor(x / 4) * 8192 + Math.floor(z / 4); if (!this.cells.has(k)) this.cells.set(k, []); this.cells.get(k).push([x, z, y, w, deck]); };
@@ -127,7 +129,7 @@ export class Transit {
     for (const w of this.ways) { const calls = w.stops.map(() => []); for (const p of w.pats) p.stops.forEach((s, q) => calls[s].push([p, q]));
       w.stops.forEach((q, i) => { if (!calls[i].length) return; const f = w.frame ? w.frame(q.s) : (() => { const a = w.at(q.s, {}), b = w.at(q.s + 0.5, {}), l = Math.hypot(b.x - a.x, b.z - a.z) || 1; return [a.x, a.y, a.z, (b.x - a.x) / l, (b.z - a.z) / l]; })(), under = !!q.under, bus = w.kind === 'bus';
         const x = under ? (q.door ? q.door[0] : f[0]) : bus ? f[0] - f[4] * 0.78 : f[0], z = under ? (q.door ? q.door[1] : f[2]) : bus ? f[2] + f[3] * 0.78 : f[2]; if (bus) { const old = P.find((e) => e.bus && Math.hypot(e.x - x, e.z - z) < 5 && e.f[3] * f[3] + e.f[4] * f[4] > 0.3 && (key(e.name) === key(q.name) || Math.hypot(e.x - x, e.z - z) < 2.2)); if (old) { old.calls.push(...calls[i]); if (!old.ways.includes(w)) old.ways.push(w); return; } }
-        P.push({ name: q.name, x, z, y: under ? (q.h ?? f[1]) : f[1], f, way: w, ways: [w], i, s: q.s, under, shut: under && !q.door, bus, calls: calls[i] }); }); }
+        P.push({ name: q.name, x, z, y: under ? (q.h ?? f[1]) : f[1], f, way: w, ways: [w], i, s: q.s, under, shut: under && !q.door, entry: q.entry || null, bus, calls: calls[i] }); }); }
     return P;
   }
 }

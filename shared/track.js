@@ -85,11 +85,19 @@ export class Network {
   // is a car in the tunnel (2), in a cutting (1), or neither?
   under(c) { const q = this.at(c.x, c.z, c.y + 0.15, null, (this.uq ||= {})); return q && q.road.tunnel ? q.road.tunnel[q.i] : 0; }
 
+  // from a hub to the next by hubs that were put on the way (`+…`: where a road drawn by hand meets another)
+  through(a, b) {
+    const best = new Map([[a, 0]]), prev = new Map(), open = [a];
+    while (open.length) { open.sort((p, q) => best.get(q) - best.get(p)); const h = open.pop(); if (h === b) break; if (h !== a && h[0] !== '+') continue; for (const e of this.adj.get(h) || []) { const d = best.get(h) + e.r.len; if (d < (best.get(e.to) ?? Infinity)) { best.set(e.to, d); prev.set(e.to, [h, e.r]); if (!open.includes(e.to)) open.push(e.to); } } }
+    if (!prev.has(b)) throw new Error(`no road ${a} → ${b}`);
+    const out = []; for (let h = b; h !== a;) { const [p, r] = prev.get(h); out.unshift([r, r.a === p ? 1 : -1]); h = p; } return out;
+  }
+
   pathRoads(hubs) {
     const out = [];
     for (let k = 0; k < hubs.length; k++) {
       const a = hubs[k], b = hubs[(k + 1) % hubs.length], best = this.adj.get(a).filter((e) => e.to === b).sort((p, q) => p.r.len - q.r.len)[0];
-      if (!best) throw new Error(`no road ${a} → ${b}`);
+      if (!best) { out.push(...this.through(a, b)); continue; }
       out.push([best.r, best.r.a === a ? 1 : -1]);
     }
     return out;

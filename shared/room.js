@@ -4,7 +4,7 @@
 import { cityStart } from './clock.js';
 import { cleanPlayerName, cleanRoomName } from './names.js';
 import { COURSES } from './courses.js';
-import { CARS, makeCar, stepCar, startOn, track, bump, STEP } from './car.js';
+import { CARS, RACERS, makeCar, stepCar, startOn, track, bump, STEP } from './car.js';
 import { makeBot, driveBot } from './bot.js';
 import { Course } from './track.js';
 import { STARTS } from './places.js';
@@ -94,7 +94,7 @@ export class Room {
     const taken = new Set(people.map((m) => m.color)), names = BOT_NAMES.filter((n) => !people.some((m) => m.name === n)), seed = Math.floor(Math.random() * 1e9);
     const free = COLOURS.filter((c) => !taken.has(c));
     this.raceNo = (this.raceNo + 1) & 255;
-    this.bots = Array.from({ length: nb }, (_, k) => ({ id: 60000 + k, name: names[(k + seed) % names.length], car: CARS[(k * 5 + seed) % CARS.length].id, color: free[k % free.length] || COLOURS[k % COLOURS.length], bot: true }));
+    this.bots = Array.from({ length: nb }, (_, k) => ({ id: 60000 + k, name: names[(k + seed) % names.length], car: RACERS[(k * 5 + seed) % RACERS.length].id, color: free[k % free.length] || COLOURS[k % COLOURS.length], bot: true }));
     // the grid: bots ahead, people by their last result reversed, newest last
     const grid = [...this.bots.map((b) => b.id), ...people.sort((a, b) => a.wins - b.wins || Math.sin(seed + a.id) - Math.sin(seed + b.id)).map((m) => m.id)];
     this.race = { no: this.raceNo, seed, settings: { ...S }, grid, startAt: this.now() + COUNTDOWN, results: new Map(), out: new Set(), endAt: 0, course: this.net && !cruise ? new Course(this.net, def, S.reverse) : null, traffic: [], cruise, wx: { to: S.weather, from: null, at: 0 }, clock: cityStart(Date.now(), S.light) };

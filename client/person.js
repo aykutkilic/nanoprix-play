@@ -52,6 +52,6 @@ export function makePerson(color = '#c8242a') {
     body.position.y = -low * k * (1 - run * 0.3) + run * k * 0.012 * (1 + Math.cos(ph * 2)); // (the lower foot is on the ground; in a run both leave it)
     body.rotation.x = k * 0.03 + run * 0.13; body.rotation.z = Math.sin(ph) * 0.02 * k; chest.rotation.y = Math.sin(ph) * 0.13 * k; chest.scale.y = 1 + Math.sin(idle * 1.9) * 0.006; head.rotation.y = -chest.rotation.y * 0.8 + (1 - k) * Math.sin(idle * 0.45) * 0.3; head.rotation.x = -body.rotation.x * 0.7;
   };
-  g.userData.step(0, 0);
+  g.userData.step(0, 0); g.userData.limbs = { body, chest, head, L, A };
   g.userData.dispose = () => g.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.isSprite && o.material.map) o.material.map.dispose(); o.material.dispose(); } }); return g;
 }

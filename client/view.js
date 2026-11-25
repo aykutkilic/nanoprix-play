@@ -1,6 +1,7 @@
 // The renderer: sky, sun with a shadow that follows the car, day and night,
 // cameras, post-processing. (Light levels are the board game's.)
 import * as THREE from './vendor/three.module.min.js';
+import { carOf } from '../shared/car.js';
 import { SUN_DIR, HAZE, NIGHT_HAZE, QUALITY, Post, FrameWatch, startQuality, makeSky, skyEnvironment, pixelRatio, gfxChoice, setGfxChoice } from './realism.js';
 import { WEATHER } from '../shared/weather.js';
 import { cut } from './weather.js';
@@ -37,7 +38,7 @@ export class View {
   // every shader there is, made before it is needed (a scene of its own: only what is in it)
   warm(part = null) { const r = this.renderer, was = r.getRenderTarget(); try { if (this.quality.post && this.post.main) r.setRenderTarget(this.post.main); if (part) r.compile(part, this.camera, this.scene); else r.compile(this.scene, this.camera); } finally { r.setRenderTarget(was); } }
   restore() {
-    forget(this.scene, [this.envSky, this.envNight, this.sun.shadow.map && this.sun.shadow.map.texture, this.sky.material, ...this.post.targets(), ...this.post.materials()]);
+    if (this.cabin && this.cabin.mirror) this.cabin.mirror.dispose(); forget(this.scene, [this.envSky, this.envNight, this.sun.shadow.map && this.sun.shadow.map.texture, this.sky.material, ...this.post.targets(), ...this.post.materials()]);
     if (this.world.remake) this.world.remake();
     this.post.main = null; this.post.w = 0; this.sun.shadow.map = null; this.envSky = skyEnvironment(this.renderer, '#27505f'); this.envNight = skyEnvironment(this.renderer, '#0a1420', 1);
     if (gfxChoice() === 'auto' && this.level !== 'low') this.setQuality(this.level === 'high' ? 'medium' : 'low'); else this.resize();
@@ -101,7 +102,7 @@ export class View {
     const want = c.yaw + d * 0.45 + (back ? Math.PI : 0);
     if (!K.init) { K.yaw = want; }
     let e = want - K.yaw; e = Math.atan2(Math.sin(e), Math.cos(e)); K.yaw += e * Math.min(1, dt * (back ? 30 : m === 'diorama' || m === 'top' ? 2.2 : 6.2));
-    const S = { chase: [3.7 + v * 0.05, 1.55 + v * 0.012, 2.4, 58 + v * 0.9, 0.35], near: [2.35 + v * 0.03, 0.85, 3.2, 64 + v * 0.9, 0.3], diorama: [13.5 + v * 0.16, 11.5 + v * 0.1, 3.2 + v * 0.16, 34, 0], top: [5.5, 26 + v * 0.3, 2 + v * 0.25, 36, 0] }[m]; if (this.aboard && (m === 'chase' || m === 'near')) { S[0] = 9.5; S[1] = 4.6; S[2] = 1; S[3] = 52; S[4] = 0.6; } if (rig && (m === 'chase' || m === 'near')) { const q = { walk: [2.3, 0.95, 1.5, 58, 0.3], pass: [1.7, 0.6, 1.5, 66, 0.3], ship: [9.5, 4.6, 1, 52, 0.6], hall: [2.0, 0.75, 1.6, 64, 0.3], bus: [5.2, 2.2, 2.4, 58, 0.5], train: [9, 3.4, 4, 56, 0.7], tube: [3.0, 0.8, 4, 66, 0.4] }[rig.kind]; for (let k = 0; k < 5; k++) S[k] = q[k]; } const sx = Math.sin(K.yaw), sz = Math.cos(K.yaw);
+    const S = { chase: [3.7 + v * 0.05, 1.55 + v * 0.012, 2.4, 58 + v * 0.9, 0.35], near: [2.35 + v * 0.03, 0.85, 3.2, 64 + v * 0.9, 0.3], diorama: [13.5 + v * 0.16, 11.5 + v * 0.1, 3.2 + v * 0.16, 34, 0], top: [5.5, 26 + v * 0.3, 2 + v * 0.25, 36, 0] }[m]; if (!rig && c.type && (m === 'chase' || m === 'near')) { const h = carOf(c.type).half, k = h > 0.7 ? 1 + (h - 0.62) * 0.75 : h < 0.5 ? 0.72 : 1; S[0] *= k; S[1] *= h > 0.8 ? k * 1.12 : h < 0.5 ? 0.85 : 1; } if (this.aboard && (m === 'chase' || m === 'near')) { S[0] = 9.5; S[1] = 4.6; S[2] = 1; S[3] = 52; S[4] = 0.6; } if (rig && (m === 'chase' || m === 'near')) { const q = { walk: [2.3, 0.95, 1.5, 58, 0.3], pass: [1.7, 0.6, 1.5, 66, 0.3], ship: [9.5, 4.6, 1, 52, 0.6], hall: [2.0, 0.75, 1.6, 64, 0.3], bus: [5.2, 2.2, 2.4, 58, 0.5], train: [9, 3.4, 4, 56, 0.7], tube: [3.0, 0.8, 4, 66, 0.4] }[rig.kind]; for (let k = 0; k < 5; k++) S[k] = q[k]; } const sx = Math.sin(K.yaw), sz = Math.cos(K.yaw);
     const shy = !!rig && rig.kind === 'walk' && !!rig.solid && (m === 'chase' || m === 'near'), eyeY = c.y + 0.42; let px0 = 0, pz0 = 0; if (shy) this.swing(c, rig.solid, S, eyeY, dt); else K.swing = K.side = 0; { const y = K.yaw + (K.swing || 0); px0 = Math.sin(y); pz0 = Math.cos(y); }
     const zm = m === 'diorama' || m === 'top' ? this.zoom : 1, px = c.x - px0 * S[0] * zm, pz = c.z - pz0 * S[0] * zm; let py = c.y + S[1] * zm;
     if (this.world && !deep && !(this.under && (m === 'chase' || m === 'near'))) py = Math.max(py, this.world.height(px, pz) + 0.5);
@@ -148,6 +149,7 @@ export class View {
     if (this.lost) return; this.camera.updateMatrixWorld(); cut.cam.value.copy(this.camera.matrixWorld);
     this.sky.position.copy(this.camera.position); this.sky.material.uniforms.uTime.value = now / 1000;
     if (this.world) { const f = Math.min(this.far, this.camera === this.ortho ? 1e3 : 2.9 / this.scene.fog.density); this.world.update(dt, now, this.look || this.camera.position, f); }
+    if (this.cabin && this.cabin.mirror && this.camera === this.persp) this.cabin.mirror.render(this, this.level === 'high' ? 2 : this.level === 'medium' ? 3 : 4);
     if (this.quality.post) this.post.render(this.scene, this.camera); else { this.renderer.setRenderTarget(null); this.renderer.render(this.scene, this.camera); }
     if (this.watch) this.watch.frame(now);
   }

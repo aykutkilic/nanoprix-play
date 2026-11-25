@@ -35,10 +35,17 @@ export class Hud {
     this.set('limit', d.limit ? String(d.limit) : ''); this.limit.style.display = d.limit ? '' : 'none'; this.limit.classList.toggle('over', !!d.free && Math.abs(d.speed) * KMH > d.limit + 5);
     this.turbo.firstChild.style.transform = `scaleX(${d.turbo.toFixed(3)})`; this.turbo.classList.toggle('hot', !!d.boosting);
     if (this.warn.hidden === !!d.wrong) { this.warn.hidden = !d.wrong; this.warn.textContent = t('wrong'); }
-    const g = this.g, N = 380, z = d.zoom || 1.15, S = this.S; g.save(); g.clearRect(0, 0, N, N); g.beginPath(); g.arc(N / 2, N / 2, N / 2, 0, 7); g.clip(); g.fillStyle = '#184258'; g.fillRect(0, 0, N, N);
-    g.translate(N / 2, N / 2); g.rotate(d.yaw - Math.PI); g.scale(z, z); g.translate(-(d.me.x - this.x0) * S, -(d.me.z - this.z0) * S); g.drawImage(this.map, 0, 0);
+    if (this.screen) { this.screen.draw(this, d, this.now); return; }
+    const g = this.g, N = 380; g.save(); g.clearRect(0, 0, N, N); g.beginPath(); g.arc(N / 2, N / 2, N / 2, 0, 7); g.clip(); this.mapAt(g, N / 2, N / 2, N / 2, d, d.zoom || 1.15); g.restore();
+  }
+  // in a car, the map is on the navigation's screen (dash.js), and what else its dials say is not said twice
+  pit(screen, now) { this.now = now; if (this.screen === screen) return; this.screen = screen; this.el.classList.toggle('pit', !!screen); }
+  // the map round (cx, cy), R to its edge
+  mapAt(g, cx, cy, R, d, z) {
+    const S = this.S; g.save(); g.fillStyle = '#184258'; g.fillRect(cx - R * 2, cy - R * 2, R * 4, R * 4);
+    g.translate(cx, cy); g.rotate(d.yaw - Math.PI); g.scale(z, z); g.translate(-(d.me.x - this.x0) * S, -(d.me.z - this.z0) * S); g.drawImage(this.map, 0, 0);
     if (this.path) { g.lineJoin = g.lineCap = 'round'; g.strokeStyle = '#ffcf4a'; g.lineWidth = 3.4; g.stroke(this.path); g.fillStyle = '#fff'; g.beginPath(); g.arc((this.start.x - this.x0) * S, (this.start.z - this.z0) * S, 4, 0, 7); g.fill(); }
-    if (this.trail) { g.lineJoin = g.lineCap = 'round'; g.strokeStyle = 'rgba(0,30,60,.8)'; g.lineWidth = 6; g.stroke(this.trail); g.strokeStyle = '#3db4ff'; g.lineWidth = 3.8; g.stroke(this.trail); if (this.goal) { const x = (this.goal.x - this.x0) * S, y = (this.goal.z - this.z0) * S; g.fillStyle = '#ff5a3c'; g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, 5.5, 0, 7); g.fill(); g.stroke(); const dx = (this.goal.x - d.me.x) * S * z, dy = (this.goal.z - d.me.z) * S * z, l = Math.hypot(dx, dy); if (l > N / 2 - 14) { g.beginPath(); g.arc((d.me.x - this.x0) * S + (dx / l) * (N / 2 - 14) / z, (d.me.z - this.z0) * S + (dy / l) * (N / 2 - 14) / z, 5, 0, 7); g.fill(); g.stroke(); } } }
+    if (this.trail) { g.lineJoin = g.lineCap = 'round'; g.strokeStyle = 'rgba(0,30,60,.8)'; g.lineWidth = 6; g.stroke(this.trail); g.strokeStyle = '#3db4ff'; g.lineWidth = 3.8; g.stroke(this.trail); if (this.goal) { const x = (this.goal.x - this.x0) * S, y = (this.goal.z - this.z0) * S; g.fillStyle = '#ff5a3c'; g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, 5.5, 0, 7); g.fill(); g.stroke(); const dx = (this.goal.x - d.me.x) * S * z, dy = (this.goal.z - d.me.z) * S * z, l = Math.hypot(dx, dy); if (l > R - 14) { g.beginPath(); g.arc((d.me.x - this.x0) * S + (dx / l) * (R - 14) / z, (d.me.z - this.z0) * S + (dy / l) * (R - 14) / z, 5, 0, 7); g.fill(); g.stroke(); } } }
     for (const c of d.cars) { g.fillStyle = c.color; g.strokeStyle = '#000'; g.lineWidth = 1.2; g.beginPath(); g.arc((c.x - this.x0) * S, (c.z - this.z0) * S, 4.6, 0, 7); g.fill(); g.stroke(); }
     g.translate((d.me.x - this.x0) * S, (d.me.z - this.z0) * S); g.rotate(-d.yaw + Math.PI); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.beginPath(); g.moveTo(0, -8.5); g.lineTo(6, 6); g.lineTo(0, 3); g.lineTo(-6, 6); g.closePath(); g.fill(); g.stroke(); g.restore();
   }

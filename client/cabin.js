@@ -4,32 +4,11 @@
 import * as THREE from './vendor/three.module.min.js';
 import { isGlass } from './carmodels.js';
 import { rng } from './realism.js';
+import { Parts, LAMP, lit, rider, seat, COATS, SKINS, HAIRS } from './trim.js';
+import { CAR, cockpit, cut } from './cockpit.js';
+import { setGlow } from './dash.js';
+import { Mirror } from './mirror.js';
 const V = (x, y, z) => new THREE.Vector3(x, y, z), UP = V(0, 1, 0), BACK = new THREE.Quaternion().setFromAxisAngle(UP, Math.PI), PI = Math.PI;
-// ---------------------------------------------------------------- what it is made of: one mesh a cabin, coloured by corner; lit from inside at night and below ground
-const lit = { value: 0 };
-const trim = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, envMapIntensity: 0.55 }); trim.onBeforeCompile = (s) => { s.uniforms.uLit = lit; s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uLit;').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += diffuseColor.rgb * uLit;'); };
-const pane = new THREE.MeshBasicMaterial({ color: '#9fc4d2', transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide });
-class Parts {
-  constructor() { this.pos = []; this.nor = []; this.col = []; this.glow = []; this.panes = []; this.c = new THREE.Color(); }
-  put(g, color) { const q = g.index ? g.toNonIndexed() : g; this.pos.push(...q.attributes.position.array); this.nor.push(...q.attributes.normal.array); this.c.set(color); for (let i = 0; i < q.attributes.position.count; i++) this.col.push(this.c.r, this.c.g, this.c.b); return this; }
-  box(w, h, d, x, y, z, color, rx = 0, ry = 0, rz = 0) { const g = new THREE.BoxGeometry(w, h, d); if (rx) g.rotateX(rx); if (ry) g.rotateY(ry); if (rz) g.rotateZ(rz); return this.put(g.translate(x, y, z), color); }
-  rod(a, b, r, color) { const A = V(...a), B = V(...b), d = B.clone().sub(A), l = d.length(), g = new THREE.CylinderGeometry(r, r, l, 8); g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, d.normalize())); return this.put(g.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2), color); }
-  lamp(w, h, d, x, y, z) { this.glow.push(new THREE.BoxGeometry(w, h, d).translate(x, y, z)); return this; }
-  glass(w, h, x, y, z, ry = 0) { this.panes.push(new THREE.PlaneGeometry(w, h).rotateY(ry).translate(x, y, z)); return this; }
-  group() {
-    const g = new THREE.Group(), b = new THREE.BufferGeometry(); b.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3)); b.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3)); b.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3)); const m = new THREE.Mesh(b, trim); m.castShadow = m.receiveShadow = true; g.add(m);
-    for (const l of this.glow) { const o = new THREE.Mesh(l, LAMP); g.add(o); } for (const p of this.panes) { const o = new THREE.Mesh(p, pane); o.renderOrder = 3; g.add(o); } g.traverse((o) => { o.frustumCulled = false; }); return g;
-  }
-}
-const LAMP = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.15, 1.1, 1.0), fog: false });
-const COATS = ['#32425a', '#7a3b34', '#4d5b3c', '#c9a13a', '#2b2b30', '#8a8f96', '#b7522f', '#5b4a6b'], SKINS = ['#d9a77f', '#c48f68', '#e3b892'], HAIRS = ['#2a1a12', '#15110e', '#5a3a22', '#8a8580'];
-// somebody who sits (or stands) there: seen close to, so with a head and arms
-function rider(P, x, y, z, yaw, R, sit = true) {
-  const coat = COATS[Math.floor(R() * COATS.length)], skin = SKINS[Math.floor(R() * 3)], hair = HAIRS[Math.floor(R() * 4)], c = Math.cos(yaw), s = Math.sin(yaw), at = (u, v, w) => [x + u * c + w * s, y + v, z - u * s + w * c], blob = (r, p, color, sx = 1, sy = 1, sz = 1) => P.put(new THREE.SphereGeometry(r, 10, 8).scale(sx, sy, sz).rotateY(yaw).translate(...p), color), b = sit ? 0.0 : 0.16;
-  P.put(new THREE.CapsuleGeometry(0.036, 0.075, 3, 10).scale(1.12, 1, 0.82).rotateY(yaw).translate(...at(0, b + 0.085, 0)), coat); blob(0.03, at(0, b + 0.205, 0.004), skin, 0.9, 1.1, 1); blob(0.032, at(0, b + 0.216, -0.004), hair, 0.95, 0.92, 1); for (const e of [1, -1]) P.rod(at(e * 0.046, b + 0.13, 0), at(e * 0.05, b + 0.055, 0.035), 0.013, coat);
-  if (sit) for (const e of [1, -1]) { P.rod(at(e * 0.02, 0.03, 0.01), at(e * 0.022, 0.03, 0.085), 0.016, '#2c3142'); P.rod(at(e * 0.022, 0.03, 0.085), at(e * 0.022, -0.06, 0.09), 0.014, '#2c3142'); } else for (const e of [1, -1]) P.rod(at(e * 0.018, b + 0.04, 0), at(e * 0.02, 0, 0), 0.016, '#2c3142');
-}
-const seat = (P, x, y, z, w, color, yaw = 0, back = 0.15) => { const c = Math.cos(yaw), s = Math.sin(yaw); P.box(w, 0.022, 0.1, x, y, z, color, 0, yaw); P.box(w, back, 0.018, x - s * 0.055, y + back / 2, z - c * 0.055, color, 0, yaw); P.box(w * 0.5, 0.09, 0.05, x, y - 0.055, z, '#3a3d42', 0, yaw); };
 // ---------------------------------------------------------------- the coach of a bus, a tram, a train
 // w half width; y0 floor, yb–yt windows, y1 ceiling; z0 back, z1 front; accent: the line's colour
 function coach(k, accent, seed) {
@@ -67,31 +46,6 @@ const COACH = {
 COACH.rail = { ...COACH.metro, seat: '#1c4f9c', rail: '#d9dde0', low: '#cfd6da' };
 // where in the train it is: the first car, and over what length it is laid on the line (as transit.js does)
 const LEAD = (K, way) => (way.kind === 'mbus' ? [0.84, 0.62] : way.kind === 'bus' || way.kind === 'old' ? [0, 0.5] : [((K.cars - 1) / 2) * K.pitch, K.pitch * 0.33]);
-// ---------------------------------------------------------------- the car's: what the outside has not (it keeps its bonnet, pillars and roof)
-// eye; belt: the top of the doors; wz where the windscreen starts; rf, rb the roof's front and back, its height and half width
-const CAR = {
-  taksi: { eye: [0.1, 0.392, -0.11], belt: 0.3, wz: 0.26, rf: 0.03, rb: -0.24, ry: 0.448, rw: 0.19, gw: 0.24, cloth: '#43474e' }, polis: { eye: [0.1, 0.392, -0.11], belt: 0.3, wz: 0.26, rf: 0.03, rb: -0.24, ry: 0.448, rw: 0.19, gw: 0.24, cloth: '#23314c' },
-  klasik: { eye: [0.1, 0.4, -0.095], belt: 0.312, wz: 0.23, rf: 0.06, rb: -0.22, ry: 0.452, rw: 0.19, gw: 0.24, cloth: '#7a2f24', wood: 1 }, spor: { eye: [0.1, 0.338, -0.125], belt: 0.256, wz: 0.25, rf: 0.0, rb: -0.17, ry: 0.378, rw: 0.17, gw: 0.236, cloth: '#15161a' },
-  dolmus: { eye: [0.125, 0.525, 0.17], belt: 0.412, wz: 0.5, rf: 0.42, rb: -0.58, ry: 0.585, rw: 0.23, gw: 0.27, cloth: '#3a3f47', rows: 3 }, simit: { eye: [0, 0.63, 0.14], open: 1 },
-};
-function cockpit(kind, R0) {
-  const S = CAR[kind] || CAR.taksi, P = new Parts(); void R0; if (S.open) { const g = P.box(0.02, 0.004, 0.02, 0, 0.5, 0.36, '#222').group(); return { g, S, wheel: null, needle: null }; }
-  const { belt, wz, rf, rb, ry, rw, gw } = S, ex = S.eye[0], dash = S.wood ? '#6d4426' : '#33373d', hl = S.wood ? '#d8cdb4' : '#c9ccca', zd = wz - 0.1;
-  P.box(gw * 2, 0.05, 0.17, 0, belt - 0.018, zd + 0.01, dash); P.box(gw * 2, 0.012, 0.16, 0, belt + 0.01, zd + 0.02, S.wood ? '#7a4c2a' : '#2a2e33', 0.06); P.box(0.14, 0.022, 0.05, ex, belt + 0.019, zd - 0.045, '#25282c', -0.25); P.box(0.12, 0.05, 0.012, 0, belt - 0.02, zd - 0.082, '#0c1116'); P.box(0.1, 0.034, 0.004, 0, belt - 0.018, zd - 0.09, '#2f6ea5'); for (const s of [1, -1]) { P.box(0.05, 0.014, 0.004, s * (gw - 0.05), belt - 0.005, zd - 0.077, '#0c0d0f'); P.box(0.016, 0.016, -(rb - 0.08 - zd), s * (gw + 0.004), belt + 0.006, (zd + rb - 0.08) / 2, S.wood ? '#6d4426' : '#2a2c30'); P.box(0.016, 0.1, -(rb - 0.08 - zd), s * (gw + 0.006), belt - 0.05, (zd + rb - 0.08) / 2, S.cloth); }
-  for (const e of [-0.032, 0.032]) P.put(new THREE.CylinderGeometry(0.018, 0.018, 0.004, 24).rotateX(PI / 2 - 0.2).translate(ex + e, belt + 0.008, zd - 0.079), S.wood ? '#f1e6c8' : '#39424c');
-  P.box(rw * 2, 0.008, rf - rb, 0, ry, (rf + rb) / 2, hl); P.box(rw * 1.9, 0.014, 0.016, 0, ry - 0.005, rf + 0.004, hl); for (const s of [1, -1]) P.box(0.11, 0.004, 0.04, s * 0.095, ry - 0.012, rf - 0.02, '#b9b4a6', 0.15);
-  P.box(gw * 1.98, 0.006, zd - rb + 0.16, 0, belt + 0.003, (zd + rb) / 2 - 0.08, '#2a2c30'); // (over the body's own top)
-  // the mirror, with something dark in it; the seats
-  P.rod([0, ry, rf + 0.012], [0, ry - 0.02, rf + 0.022], 0.003, '#17181b'); P.box(0.076, 0.021, 0.008, 0, ry - 0.026, rf + 0.022, '#25282c'); P.box(0.07, 0.016, 0.002, 0, ry - 0.026, rf + 0.017, '#6d8896');
-  const sy = belt - 0.07, sb = S.eye[2] - 0.065; for (const s of [1, -1]) { P.box(0.15, 0.03, 0.15, s * Math.abs(ex), sy, S.eye[2] + 0.02, S.cloth); P.box(0.145, 0.16, 0.035, s * Math.abs(ex), sy + 0.09, sb - 0.02, S.cloth, -0.12); if (!S.wood) P.box(0.07, 0.04, 0.025, s * Math.abs(ex), sy + 0.2, sb - 0.035, S.cloth); }
-  if (S.rows) for (let k = 1; k <= S.rows; k++) { const z = sb - 0.06 - k * 0.19; for (const s of [1, -1]) { seat(P, s * 0.13, belt - 0.09, z + 0.05, 0.15, S.cloth, 0, 0.17); if ((k + s) % 3) rider(P, s * 0.13, belt - 0.08, z + 0.05, 0, rng(k * 5 + s)); } P.box(gw * 2, 0.01, 0.8, 0, belt - 0.17, rb + 0.4, '#2a2c30'); } else { P.box(gw * 1.8, 0.12, 0.05, 0, belt - 0.03, rb - 0.02, S.cloth, -0.2); P.box(gw * 1.9, 0.008, 0.18, 0, belt + 0.006, rb - 0.14, '#1d1f23'); }
-  if (kind === 'taksi' || kind === 'dolmus') { P.box(0.045, 0.018, 0.025, -0.01, belt + 0.024, zd, '#25282c'); P.box(0.032, 0.008, 0.002, -0.01, belt + 0.026, zd - 0.013, '#ff5a3c'); P.rod([0, ry - 0.036, rf + 0.022], [0, ry - 0.058, rf + 0.022], 0.0007, '#1c4f9c'); P.put(new THREE.SphereGeometry(0.0055, 14, 10).scale(1, 1, 0.5).translate(0, ry - 0.063, rf + 0.022), '#1d56b8'); P.put(new THREE.SphereGeometry(0.003, 10, 8).scale(1, 1, 0.5).translate(0, ry - 0.063, rf + 0.02), '#f4f6f8'); } // (the taximeter, and a bead against the evil eye)
-  const g = P.group(), W = new Parts(); W.put(new THREE.TorusGeometry(0.05, 0.0055, 10, 36), S.wood ? '#4a2c18' : '#17181b'); for (const a of [0, PI * 0.72, -PI * 0.72]) W.rod([0, 0, 0], [Math.sin(a + PI) * 0.047, Math.cos(a + PI) * 0.047, 0], 0.0045, '#2c3036'); W.put(new THREE.CylinderGeometry(0.014, 0.014, 0.008, 20).rotateX(PI / 2), '#22252a');
-  for (const a of [1.25, -1.25]) { W.put(new THREE.CapsuleGeometry(0.0085, 0.014, 4, 10).rotateZ(-a + PI / 2).translate(Math.sin(a) * 0.05, Math.cos(a) * 0.05, -0.002), '#d9a77f'); W.rod([Math.sin(a) * 0.055, Math.cos(a) * 0.05 - 0.006, -0.008], [Math.sin(a) * 0.075, -0.05, -0.06], 0.011, '#32425a'); } // (hands)
-  const wheel = W.group(), col = new THREE.Group(); col.position.set(ex, belt + 0.004, zd - 0.112); col.rotation.x = 0.38; col.add(wheel); g.add(col);
-  const needle = new THREE.Group(); { const N = new Parts().box(0.0025, 0.017, 0.002, 0, 0.0085, 0, '#e02a1c').group(); needle.add(N); needle.position.set(ex - 0.032, belt + 0.009, zd - 0.083); needle.rotation.x = -0.2; g.add(needle); }
-  return { g, S, wheel, needle };
-}
 // ---------------------------------------------------------------- a ship's: places on her (looked up in her model), and a saloon where there is room for one
 // [x, y, z (to the bow), yaw, pitch, saloon?]
 const SHIP = {
@@ -124,7 +78,7 @@ export class Cabin {
   clamp() { this.yaw = Math.atan2(Math.sin(this.yaw), Math.cos(this.yaw)); this.pitch = Math.max(-1.1, Math.min(1.1, this.pitch)); }
   // nothing to sit in
   leave() { if (this.key) { this.drop(); this.key = ''; } this.on = false; this.view.cabin = null; const W = this.view.world; if (W) W.inside = null; }
-  drop() { if (this.g) { this.scene.remove(this.g); this.g.traverse((o) => { if (o.geometry && o.parent !== this.display.mesh && o !== this.display.mesh) o.geometry.dispose(); }); this.display.mesh.removeFromParent(); this.g = null; } for (const o of this.glasses) o.visible = true; this.glasses.length = 0; if (this.model) this.model.userData.far = null; this.model = null; this.wheel = this.needle = null; }
+  drop() { if (this.g) { this.scene.remove(this.g); this.g.traverse((o) => { if (o.geometry && o.parent !== this.display.mesh && o !== this.display.mesh) o.geometry.dispose(); }); this.display.mesh.removeFromParent(); this.g = null; } for (const o of this.glasses) o.visible = true; this.glasses.length = 0; if (this.model) this.model.userData.far = null; this.model = null; this.pit = null; if (this.skin) { this.skin[0].geometry = this.skin[1]; this.skin = null; } if (this.mirror) this.mirror.on = false; }
   enter(key, kind, seats, make) { if (this.key === key) return; this.drop(); this.key = key; this.kind = kind; this.seats = seats; this.n = Math.min(this.picked.get(kind) || 0, seats.length - 1); this.yaw = this.pitch = 0; const r = make(); if (r) { this.g = r; this.scene.add(r); } this.view.cam.init = false; }
   turn() { if (!this.on) return; if (this.flip) this.flip(); else this.nextSeat(); }
   nextSeat() { if (!this.on || this.seats.length < 2) return; this.n = (this.n + 1) % this.seats.length; this.picked.set(this.kind, this.n); this.yaw = this.pitch = 0; }
@@ -134,15 +88,19 @@ export class Cabin {
     this.pos.set(s[0] + sx, s[1] + sy, s[2]).applyQuaternion(q).add(p); QL.setFromEuler(E.set(-(s[4] || 0) - this.pitch * 0, s[3] + this.yaw, 0, 'YXZ')); this.quat.copy(q).multiply(QL); QL.setFromEuler(E.set(-this.pitch, 0, 0)); this.quat.multiply(QL).multiply(BACK); this.on = true; this.view.cabin = this;
   }
   // how bright it is in here: lamps at night and below ground
-  bright(night, under) { lit.value = 0.2 + 0.32 * Math.max(Math.min(1, night), under ? 0.85 : 0); LAMP.color.setRGB(1.15, 1.1, 1.0).multiplyScalar(0.75 + 0.5 * Math.max(night, under ? 1 : 0)); }
+  bright(night, under) { lit.value = 0.26 + 0.28 * Math.max(Math.min(1, night), under ? 0.85 : 0); LAMP.color.setRGB(1.15, 1.1, 1.0).multiplyScalar(0.75 + 0.5 * Math.max(night, under ? 1 : 0)); }
   look(inp, dt) { this.yaw -= inp.steer * dt * 1.7; this.pitch += (inp.brake - inp.gas) * -dt * 1.0; this.clamp(); if (inp.drift && !this.was) this.turn(); this.was = inp.drift; }
   // ---- the car. m: its model as it stands now; c: how it goes
-  car(m, kind, c, dt, night, under) {
-    const S = CAR[kind] || CAR.taksi; this.enter(`car:${kind}:${m.id}`, 'car', [[...S.eye, 0, -0.035], [-Math.abs(S.eye[0]) || 0.001, S.eye[1], S.eye[2], 0, -0.02], ...(S.open ? [] : [[0, S.ry - 0.06, S.rb + 0.02, 0, -0.06]])], () => { const r = cockpit(kind); this.wheel = r.wheel; this.needle = r.needle; return r.g; }); if (!this.glasses.length) m.traverse((o) => { if (o.isMesh && isGlass(o.material)) { o.visible = false; this.glasses.push(o); } }); this.model = m; for (const o of this.glasses) o.visible = false;
+  car(m, kind, c, dt, night, under, d = {}, now = 0) {
+    const S = CAR[kind] || CAR.taksi; this.enter(`car:${kind}:${m.id}`, 'car', [[...S.eye, 0, S.pitch ?? -0.035], [-Math.abs(S.eye[0]) || 0.001, S.eye[1], S.eye[2], 0, S.pitch ?? -0.02], ...(S.open ? [] : [[0, S.ry - 0.06, S.rb + 0.02, 0, -0.06]])], () => { this.pit = cockpit(kind, (this.mirror ||= new Mirror())); return this.pit.g; }); if (!this.glasses.length) m.traverse((o) => { if (o.isMesh && isGlass(o.material)) { o.visible = false; this.glasses.push(o); } }); for (const o of this.glasses) o.visible = false;
+    if (this.model !== m) { this.model = m; if (!S.open) { const skin = m.userData.body.children.find((o) => o.isMesh && o.material === m.userData.paint); if (skin) { this.skin = [skin, skin.geometry]; skin.geometry = cut(kind, skin.geometry); } } }
     const b = m.userData.body; m.updateWorldMatrix(true, false); if (b) { b.updateWorldMatrix(false, false); b.matrixWorld.decompose(Pv, Q, this.hood.scale); } else m.matrixWorld.decompose(Pv, Q, this.hood.scale);
-    this.g.position.copy(Pv); this.g.quaternion.copy(Q); if (this.wheel) this.wheel.rotation.z = (c.steer || 0) * 1.5; if (this.needle) this.needle.rotation.z = 2.2 - Math.min(1, Math.abs(c.speed || 0) / 19) * 4.4;
-    if (!this.drag && Math.abs(c.speed || 0) > 1.5) { const k = Math.min(1, dt * 1.6); this.yaw -= this.yaw * k; this.pitch -= this.pitch * k; } this.bright(night * 0.5, under); this.seatAt(Pv, Q, dt, c.speed || 0, 1);
+    this.g.position.copy(Pv); this.g.quaternion.copy(Q); this.pit.update(c, dt, d, now, night, under);
+    if (!S.open || S.glass) { const M = this.mirror; M.on = true; (M.at ||= V(0, 0, 0)).set(0, S.high || S.ry - 0.04, S.tail).applyQuaternion(Q).add(Pv); (M.q ||= new THREE.Quaternion()).copy(Q); M.hide = [this.g, m]; }
+    if (!this.drag && Math.abs(c.speed || 0) > 1.5) { const k = Math.min(1, dt * 1.6); this.yaw -= this.yaw * k; this.pitch -= this.pitch * k; } this.bright(night * 0.5, under); setGlow(night, under); this.seatAt(Pv, Q, dt, c.speed || 0, 1);
   }
+  // the navigation's screen, if one sits where it can be read
+  get screen() { return this.on && this.pit && this.pit.nav && this.n < 2 && innerWidth > innerHeight * 1.35 ? this.pit.nav : null; }
   // ---- what goes by the timetable: the run p/run of a service, as it is now (w)
   transit(p, run, w, dt, night, under, stop, sub) {
     const way = p.way, K = way.K, [d, s] = LEAD(K, way), kind = COACH[way.kind] ? way.kind : 'bus', S = COACH[kind]; this.enter(`${p.no}:${run}`, kind, S.look.filter((q) => q), () => { const g = coach(kind, way.color || '#c8102e', p.no * 31 + run); const o = this.display.mesh; o.position.set(0, (S.yt + S.y1) / 2 + 0.005, S.z1 - (S.cab || 0.3) + 0.02); const sc = Math.min(S.w * 1.15, (S.y1 - S.yt) * 5.2); o.scale.set(sc, sc, 1); g.add(o); return g; });

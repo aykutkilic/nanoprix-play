@@ -11,7 +11,18 @@ export const CARS = [
   { id: 'klasik', name: { tr: 'Klasik', en: 'Classic' }, top: 17.1, acc: 8.9, grip: 1.0, mass: 1.1 },
   { id: 'simit', name: { tr: 'Simit Arabası', en: 'Simit Cart' }, top: 16.6, acc: 10.0, grip: 1.1, mass: 0.75 },
   { id: 'polis', name: { tr: 'Zabıta', en: 'Zabıta' }, top: 17.8, acc: 8.4, grip: 1.0, mass: 1.05 },
+  // (odd: not for bots, nor anybody's first. half: half its length, r: half its width and a little, turn: how tightly it turns, bike: it leans)
+  { id: 'suv', name: { tr: 'SUV', en: 'SUV' }, top: 17.3, acc: 8.2, grip: 0.98, mass: 1.35, odd: 1 },
+  { id: 'limo', name: { tr: 'Limuzin', en: 'Limousine' }, top: 17.6, acc: 7.2, grip: 0.94, mass: 1.7, half: 0.88, turn: 0.8, odd: 1 },
+  { id: 'kamyon', name: { tr: 'Kamyon', en: 'Truck' }, top: 13.6, acc: 5.6, grip: 0.9, mass: 3.2, half: 0.87, r: 0.36, turn: 0.8, odd: 1 },
+  { id: 'otobus', name: { tr: 'Otobüs', en: 'Bus' }, top: 13.0, acc: 5.0, grip: 0.9, mass: 4, half: 1.13, r: 0.36, turn: 0.74, odd: 1 },
+  { id: 'motor', name: { tr: 'Motosiklet', en: 'Motorcycle' }, top: 19.0, acc: 11.0, grip: 1.06, mass: 0.45, half: 0.34, r: 0.17, turn: 1.08, bike: 1, odd: 1 },
+  { id: 'bisiklet', name: { tr: 'Bisiklet', en: 'Bicycle' }, top: 5.6, acc: 3.4, grip: 1.05, mass: 0.2, half: 0.28, r: 0.15, turn: 1.15, bike: 1, odd: 1 },
+  { id: 'scooter', name: { tr: 'Scooter', en: 'Scooter' }, top: 5.0, acc: 4.2, grip: 1.0, mass: 0.2, half: 0.22, r: 0.15, turn: 1.2, bike: 1, odd: 1 },
+  { id: 'kaykay', name: { tr: 'Kaykay', en: 'Skateboard' }, top: 4.8, acc: 3.6, grip: 0.92, mass: 0.18, half: 0.18, r: 0.15, turn: 1.1, bike: 1, odd: 1 },
 ];
+export const RACERS = CARS.filter((c) => !c.odd);
+for (const c of CARS) { c.half ||= 0.62; c.r ||= CAR_R; c.turn ||= 1; const e = c.half > 0.7 ? c.half - 0.3 : c.half < 0.5 ? c.half * 0.45 : 0.3; c.discs = c.half > 0.7 ? [-e, 0, e] : [-e, e]; }
 export const carOf = (id) => CARS.find((c) => c.id === id) || CARS[0];
 
 export function makeCar(type = 'taksi') {
@@ -19,7 +30,7 @@ export function makeCar(type = 'taksi') {
 }
 export function putOn(car, p) { Object.assign(car, { x: p.x, y: p.y, z: p.z, vx: 0, vy: 0, vz: 0, yaw: p.yaw, steer: 0, slip: 0, drift: false, air: 0, hit: 0 }); }
 
-const tmp = {};
+const tmp = {}, end = {};
 // input: { steer −1…1, gas 0…1, brake 0…1, drift, turbo }
 export function stepCar(car, input, net, only, dt = STEP) {
   const C = carOf(car.type), fx = Math.sin(car.yaw), fz = Math.cos(car.yaw);
@@ -43,7 +54,7 @@ export function stepCar(car, input, net, only, dt = STEP) {
   car.steer += (tgt - car.steer) * Math.min(1, dt * (Math.abs(tgt) > Math.abs(car.steer) ? 7.5 : 11));
   const drifting = input.drift && ground && vf > 4.5 && (Math.abs(car.steer) > 0.15 || car.drift);
   car.drift = drifting;
-  const av = Math.abs(vf), turn = car.steer * Math.min(1, av / 2.2) * (2.75 / (1 + av * 0.072)) * (drifting ? 1.42 : 1) * C.grip * (0.72 + 0.28 * G);
+  const av = Math.abs(vf), turn = car.steer * Math.min(1, av / 2.2) * (2.75 / (1 + av * 0.072)) * (drifting ? 1.42 : 1) * C.grip * C.turn * (0.72 + 0.28 * G);
   if (ground) car.yaw -= turn * Math.sign(vf || 1) * dt; else car.yaw -= turn * 0.25 * dt;
   // grip pulls the sideways speed out
   if (ground) vl -= vl * Math.min(1, (drifting ? 2.1 : 9.5 * C.grip * G * G) * dt);
@@ -69,7 +80,7 @@ function collide(car, net, only, dt) {
   let q = net.at(car.x, car.z, car.y, only, tmp);
   if (!q) { car.vx *= 0.2; car.vz *= 0.2; car.lost = (car.lost || 0) + dt; return; }
   car.lost = 0;
-  const margin = CAR_R;
+  const C = carOf(car.type), margin = C.r;
   if (q.inside < margin) { // at the edge of every road here: pushed back, sliding along
     const r = q.road, a = q.i * 3, cx = q.disc ? q.disc.x : r.p[a] + (r.p[a + 3] - r.p[a]) * q.t, cz = q.disc ? q.disc.z : r.p[a + 1] + (r.p[a + 4] - r.p[a + 1]) * q.t;
     let nx = cx - car.x, nz = cz - car.z; const l = Math.hypot(nx, nz) || 1; nx /= l; nz /= l;
@@ -88,6 +99,8 @@ function collide(car, net, only, dt) {
     car.wallT = 0.12;
     const again = net.at(car.x, car.z, car.y, only, tmp); if (again) q = again;
   }
+  // what is long: its nose and tail too
+  if (C.half > 0.7) for (const e of [C.half - 0.3, 0.3 - C.half]) { const ux = Math.sin(car.yaw), uz = Math.cos(car.yaw), px = car.x + ux * e, pz = car.z + uz * e, w = net.at(px, pz, car.y, only, end); if (!w || w.inside >= margin * 0.8) continue; const r = w.road, a = w.i * 3, cx = w.disc ? w.disc.x : r.p[a] + (r.p[a + 3] - r.p[a]) * w.t, cz = w.disc ? w.disc.z : r.p[a + 1] + (r.p[a + 4] - r.p[a + 1]) * w.t, l = Math.hypot(cx - px, cz - pz) || 1, k = ((cx - px) * uz - (cz - pz) * ux) / l; if (Math.abs(k) < 0.35) continue; /* (sideways only) */ const o = Math.min(0.04, margin * 0.8 - w.inside) * Math.sign(k); car.x += uz * o * 0.5; car.z -= ux * o * 0.5; car.yaw += (o * 0.5) / e; const vn = (car.vx * uz - car.vz * ux) * Math.sign(k); if (vn < 0) { car.vx -= uz * Math.sign(k) * vn * 0.4; car.vz += ux * Math.sign(k) * vn * 0.4; } car.wallT = 0.12; }
   { const s = net.island(car.x, car.z, car.y, margin); if (s) { // against a metrobüs platform: along it
     const [k, , v, w] = s, sd = v < 0 ? -1 : 1, nx = -k.dz * sd, nz = k.dx * sd, push = Math.min(w - Math.abs(v), 0.12); car.x += nx * push; car.z += nz * push; const vn = car.vx * nx + car.vz * nz; if (vn < 0) { const hard = Math.min(1, -vn / 9); car.vx -= nx * vn * 1.2; car.vz -= nz * vn * 1.2; if (hard > 0.08) car.hit = Math.max(car.hit, hard); } car.wallT = 0.12; } }
   car.wallT = Math.max(0, car.wallT - dt);
@@ -106,11 +119,11 @@ function collide(car, net, only, dt) {
 
 // Two cars touching: the lighter gives way. Both, or only `a` (b is someone
 // else's to move) changes.
-export function bump(a, b, both = true, ra = CAR_R, rb = CAR_R) {
+export function bump(a, b, both = true, ra = carOf(a.type).r, rb = carOf(b.type).r) {
   if (Math.abs(a.y - b.y) > 0.6) return 0;
   let hit = 0;
-  // each is two discs, nose and tail
-  for (const i of [-0.3, 0.3]) for (const j of [-0.3, 0.3]) {
+  // each is two discs, nose and tail (or three)
+  for (const i of carOf(a.type).discs) for (const j of carOf(b.type).discs) {
     const ax = a.x + Math.sin(a.yaw) * i, az = a.z + Math.cos(a.yaw) * i, bx = b.x + Math.sin(b.yaw) * j, bz = b.z + Math.cos(b.yaw) * j, dx = ax - bx, dz = az - bz, d = Math.hypot(dx, dz), R = ra + rb;
     if (d >= R || d < 1e-5) continue;
     const nx = dx / d, nz = dz / d, ma = carOf(a.type).mass, mb = b.mass || carOf(b.type).mass, wa = both ? mb / (ma + mb) : 0.8, o = R - d;

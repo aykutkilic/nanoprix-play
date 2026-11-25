@@ -2,7 +2,7 @@ import { loadAssets } from './assets.js';
 import { Network, Course } from '../shared/track.js';
 import { Streets } from '../shared/streets.js';
 import { COURSES } from '../shared/courses.js';
-import { CARS } from '../shared/car.js';
+import { CARS, RACERS } from '../shared/car.js';
 import { PLACE, STARTS } from '../shared/places.js';
 import { COLOURS, sanitizeProfile } from '../shared/room.js';
 import { View } from './view.js';
@@ -29,7 +29,7 @@ const store = (k, v) => { try { if (v === undefined) return localStorage.getItem
 let tt = 0; const toast = (s, ms = 3200) => { const e = $('#toast'); e.textContent = s; e.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => e.classList.remove('show'), ms); };
 setLang(lang());
 let profile; try { profile = JSON.parse(store('profile') || '{}'); } catch { profile = {}; }
-profile = sanitizeProfile({ name: profile.name || ['Taksici', 'Simitçi', 'Kaptan', 'Vapurcu'][Math.floor(Math.random() * 4)] + Math.floor(Math.random() * 90 + 10), car: profile.car || CARS[Math.floor(Math.random() * CARS.length)].id, color: profile.color || COLOURS[Math.floor(Math.random() * 6)] });
+profile = sanitizeProfile({ name: profile.name || ['Taksici', 'Simitçi', 'Kaptan', 'Vapurcu'][Math.floor(Math.random() * 4)] + Math.floor(Math.random() * 90 + 10), car: profile.car || RACERS[Math.floor(Math.random() * RACERS.length)].id, color: profile.color || COLOURS[Math.floor(Math.random() * 6)] });
 const saveProfile = () => store('profile', JSON.stringify(profile));
 
 // ---------------------------------------------------------------- loading

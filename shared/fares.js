@@ -34,7 +34,7 @@ export function ferryFare(a, b, miles, kind) {
 }
 // the car ferries: a car with whoever drives it. Sirkeci – Harem by the tariff; İstinye – Çubuklu by the council's of September 2026
 const CARS = { harem: { car: 26000, jeep: 29000, minibus: 35000, moto: 11000 }, istinye: { car: 22000, jeep: 25000, minibus: 32000, moto: 10000 } };
-export const carFare = (line, kind) => CARS[/harem|sirkeci/i.test(line) ? 'harem' : 'istinye'][{ dolmus: 'minibus', minibus: 'minibus', suv: 'jeep', simit: 'moto' }[kind] || 'car'];
+export const carFare = (line, kind) => CARS[/harem|sirkeci/i.test(line) ? 'harem' : 'istinye'][{ dolmus: 'minibus', minibus: 'minibus', suv: 'jeep', simit: 'moto', motor: 'moto', bisiklet: 'moto', scooter: 'moto', kaykay: 'moto', otobus: 'minibus', kamyon: 'minibus' }[kind] || 'car'];
 export const night = (c) => { const s = ((c % 86400) + 86400) % 86400; return s >= 1800 && s < 19800; }; // 00:30 – 05:30: twice the fare
 // ---------------------------------------------------------------- a ride, from what one gets on
 // { id: what tariff, place: where one touches the card, sea, takes: does it take a transfer, fare | band, … }

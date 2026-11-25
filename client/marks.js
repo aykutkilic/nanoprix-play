@@ -62,6 +62,7 @@ export function buildMarks(W) {
     const r = net.byId.get(id); if (!r) continue;
     let i0 = -1, i1 = -1; for (let i = 0; i < r.n; i++) if (W.coast(r.p[i * 3], r.p[i * 3 + 1]) < -0.4) { if (i0 < 0) i0 = i; i1 = i; }
     i0 = Math.max(2, i0 - 4); i1 = Math.min(r.n - 3, i1 + 4);
+    { const stands = (i) => { const p = i * 3, dx = r.p[p + 3] - r.p[p - 3], dz = r.p[p + 4] - r.p[p - 2], l = Math.hypot(dx, dz) || 1; for (const s of [-1, 1]) { const x = r.p[p] - (dz / l) * s * (r.hw + 0.42), z = r.p[p + 1] + (dx / l) * s * (r.hw + 0.42); let c = false; net.around(x, z, (o, j, t, d, h) => { if (o !== r && d < o.hw + 0.75 && h < r.p[p + 2] - 2) c = true; }); if (c) return true; } return false; }; for (let k = 0; k < 14 && stands(i0); k++) i0++; for (let k = 0; k < 14 && stands(i1); k++) i1--; } // (no leg of a tower in a road under the bridge)
     const g = new THREE.Group(); root.add(g);
     const a = V(r.p[i0 * 3], 0, r.p[i0 * 3 + 1]), b = V(r.p[i1 * 3], 0, r.p[i1 * 3 + 1]), dir = b.clone().sub(a), span = dir.length(), yaw = Math.atan2(dir.x, dir.z); dir.normalize();
     const side = V(dir.z, 0, -dir.x), steel = mat('#aab2b8', { metalness: 0.55, roughness: 0.42 }), portal = lit(steel.clone(), '#3a62ff', 0.5), cable = lit(steel.clone(), '#ff2d55', 3.2), hw = r.hw + 0.42;

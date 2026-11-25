@@ -67,7 +67,8 @@ export class View {
     if (this.world && this.nightSet !== k) { this.nightSet = k; this.world.setNight(k); }
   }
   nextCam() { this.cam.mode = (this.cam.mode + 1) % CAMS.length; this.cam.init = false; try { localStorage.setItem('nanoprix.cam', CAMS[this.cam.mode]); } catch { /* */ } return CAMS[this.cam.mode]; }
-  usePersp() { if (this.camera !== this.persp) { this.camera = this.persp; this.scene.fog.density = this.fogDay ?? FOG; } }
+  // near: on foot the camera comes close to walls
+  usePersp(near = 0.35) { this.close = false; this.leaves(null); if (this.persp.near !== near) { this.persp.near = near; this.persp.updateProjectionMatrix(); } if (this.camera !== this.persp) { this.camera = this.persp; this.scene.fog.density = this.fogDay ?? FOG; } }
   // the isometric view: no perspective, always from the south-east, so north is up to the left
   isometric(c, dt) {
     const K = this.cam, v = Math.hypot(c.vx, c.vz), a = K.init ? Math.min(1, dt * 5) : 1, lead = 0.42;
@@ -80,26 +81,35 @@ export class View {
   }
   // follow a car; dt in s
   follow(c, dt, back = false) {
-    const rig = this.rig, deep = !!rig && (rig.kind === 'tube' || rig.kind === 'hall'); if (CAMS[this.cam.mode] === 'iso' && !deep) { this.isometric(c, dt); return; }
-    this.usePersp(); this.look = null;
+    const rig = this.rig, deep = !!rig && (rig.kind === 'tube' || rig.kind === 'hall'); if (CAMS[this.cam.mode] === 'iso' && !deep) { this.close = false; this.leaves(null); this.isometric(c, dt); return; }
+    this.usePersp(rig && rig.kind === 'walk' && rig.solid && /chase|near/.test(CAMS[this.cam.mode]) ? 0.14 : 0.35); this.look = null;
     const K = this.cam, m = deep ? 'chase' : CAMS[K.mode], v = Math.hypot(c.vx, c.vz), dir = v > 1.2 ? Math.atan2(c.vx, c.vz) : c.yaw;
     let d = dir - c.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); if (Math.abs(d) > 1.8) d = 0;
     const want = c.yaw + d * 0.45 + (back ? Math.PI : 0);
     if (!K.init) { K.yaw = want; }
     let e = want - K.yaw; e = Math.atan2(Math.sin(e), Math.cos(e)); K.yaw += e * Math.min(1, dt * (back ? 30 : m === 'diorama' || m === 'top' ? 2.2 : 6.2));
     const S = { chase: [3.7 + v * 0.05, 1.55 + v * 0.012, 2.4, 58 + v * 0.9, 0.35], near: [2.35 + v * 0.03, 0.85, 3.2, 64 + v * 0.9, 0.3], diorama: [13.5 + v * 0.16, 11.5 + v * 0.1, 3.2 + v * 0.16, 34, 0], top: [5.5, 26 + v * 0.3, 2 + v * 0.25, 36, 0] }[m]; if (this.aboard && (m === 'chase' || m === 'near')) { S[0] = 9.5; S[1] = 4.6; S[2] = 1; S[3] = 52; S[4] = 0.6; } if (rig && (m === 'chase' || m === 'near')) { const q = { walk: [2.3, 0.95, 1.5, 58, 0.3], hall: [2.0, 0.75, 1.6, 64, 0.3], bus: [5.2, 2.2, 2.4, 58, 0.5], train: [9, 3.4, 4, 56, 0.7], tube: [3.0, 0.8, 4, 66, 0.4] }[rig.kind]; for (let k = 0; k < 5; k++) S[k] = q[k]; } const sx = Math.sin(K.yaw), sz = Math.cos(K.yaw);
-    const zm = m === 'diorama' || m === 'top' ? this.zoom : 1, px = c.x - sx * S[0] * zm, pz = c.z - sz * S[0] * zm; let py = c.y + S[1] * zm;
+    const shy = !!rig && rig.kind === 'walk' && !!rig.solid && (m === 'chase' || m === 'near'), eyeY = c.y + 0.42; let px0 = 0, pz0 = 0; if (shy) this.swing(c, rig.solid, S, eyeY, dt); else K.swing = K.side = 0; { const y = K.yaw + (K.swing || 0); px0 = Math.sin(y); pz0 = Math.cos(y); }
+    const zm = m === 'diorama' || m === 'top' ? this.zoom : 1, px = c.x - px0 * S[0] * zm, pz = c.z - pz0 * S[0] * zm; let py = c.y + S[1] * zm;
     if (this.world && !deep && !(this.under && (m === 'chase' || m === 'near'))) py = Math.max(py, this.world.height(px, pz) + 0.5);
     let qx = px, qz = pz; if (this.under && (m === 'chase' || m === 'near')) { const n = this.world.net, q = n.at(px, pz, c.y + 0.15, null, (this.q0 ||= {})); if (q && q.road.tunnel) { const i = q.i * 3, P = q.road.p, cx = P[i] + (P[i + 3] - P[i]) * q.t, cz = P[i + 1] + (P[i + 4] - P[i + 1]) * q.t, k = q.d > 1.1 ? 1.1 / q.d : 1; qx = cx + (px - cx) * k; qz = cz + (pz - cz) * k; py = Math.min(py, q.h + 1.42); } }
     if (deep && rig.kind === 'tube') { const p = rig.back(back ? -2 : S[0]); qx = p.x; qz = p.z; py = p.y + S[1]; } else if (deep) { const f = rig.f, dx = px - f[0], dz = pz - f[2], al = Math.max(-8, Math.min(8, dx * f[3] + dz * f[4])), g = rig.way.frame(rig.s + al), u = Math.max(-1.72, Math.min(1.72, -(px - g[0]) * g[4] + (pz - g[2]) * g[3])); qx = g[0] - g[4] * u; qz = g[2] + g[3] * u; py = Math.min(py, g[1] + 1.5); }
     const a = K.init ? Math.min(1, dt * 14) : 1, ay = K.init ? Math.min(1, dt * 7) : 1;
     K.pos.x += (qx - K.pos.x) * a; K.pos.z += (qz - K.pos.z) * a; K.pos.y += (py - K.pos.y) * ay;
-    const lx = c.x + sx * S[2], lz = c.z + sz * S[2], ly = c.y + S[4] + 0.25; if (!K.init) K.look.set(lx, ly, lz); K.look.x += (lx - K.look.x) * Math.min(1, dt * 16); K.look.z += (lz - K.look.z) * Math.min(1, dt * 16); K.look.y += (ly - K.look.y) * Math.min(1, dt * 8);
+    const ahead = S[2] * Math.max(0.1, Math.cos(K.swing || 0)) ** 2 * (K.swing || shy ? 0.25 + 0.75 * (K.pull ?? 1) : 1), lx = c.x + sx * ahead, lz = c.z + sz * ahead, ly = c.y + S[4] + 0.25; if (!K.init) K.look.set(lx, ly, lz); K.look.x += (lx - K.look.x) * Math.min(1, dt * 16); K.look.z += (lz - K.look.z) * Math.min(1, dt * 16); K.look.y += (ly - K.look.y) * Math.min(1, dt * 8);
     K.init = true; K.shake = Math.max(0, K.shake - dt * 3); const s = K.shake * 0.12;
-    this.camera.position.set(K.pos.x + (Math.random() - 0.5) * s, K.pos.y + (Math.random() - 0.5) * s, K.pos.z + (Math.random() - 0.5) * s); this.camera.lookAt(K.look);
+    this.camera.position.set(K.pos.x + (Math.random() - 0.5) * s, K.pos.y + (Math.random() - 0.5) * s, K.pos.z + (Math.random() - 0.5) * s);
+    if (shy) { this.leaves(c, c.y + 0.28); const P = this.camera.position, t = rig.solid.sight(c.x, eyeY, c.z, P.x, P.y, P.z), k = K.pull ?? 1; K.pull = t < k ? t : k + (t - k) * Math.min(1, dt * 4); P.set(c.x + (P.x - c.x) * K.pull, eyeY + (P.y - eyeY) * K.pull, c.z + (P.z - c.z) * K.pull); this.close = P.distanceTo(tmpV.set(c.x, eyeY, c.z)) < 0.42; } else { K.pull = 1; }
+    this.camera.lookAt(K.look);
     K.fov += (S[3] + (c.boosting ? 7 : 0) - K.fov) * Math.min(1, dt * 4); if (Math.abs(this.camera.fov - K.fov) > 0.02) { this.camera.fov = K.fov; this.camera.updateProjectionMatrix(); }
     this.shadowAt(c.x + sx * 12, c.y, c.z + sz * 12, m === 'top' || m === 'diorama' ? 46 : 38);
     const dist = this.camera.position.distanceTo(tmpV.set(c.x, c.y, c.z)); this.post.focus = dist; this.post.tilt = this.tiltOn ? (m === 'diorama' || m === 'top' ? 1 : 0.5) : 0;
+  }
+  leaves(c, y) { const u = this.world && this.world.leafCut; if (u) { if (c) u.value.set(c.x, y, c.z, 1); else u.value.w = 0; } }
+  // on foot: the side to look from where there is room between houses and trees, straight behind if there is
+  swing(c, solid, S, y, dt) {
+    const K = this.cam; let best = -9, off = 0; for (let k = -4; k <= 4; k++) { const a = k * 0.36, w = K.yaw + a, t = solid.sight(c.x, y, c.z, c.x - Math.sin(w) * S[0], c.y + S[1], c.z - Math.cos(w) * S[0]), s = t - Math.abs(a) * 0.28 - (solid.post(c.x, c.z, c.x - Math.sin(w) * S[0], c.z - Math.cos(w) * S[0], y + 0.2) ? 0.25 : 0) + (k === (K.side || 0) ? 0.1 : 0); if (s > best) { best = s; off = k; } }
+    K.side = off; const w = off * 0.36; K.swing = K.init ? (K.swing || 0) + (w - (K.swing || 0)) * Math.min(1, dt * 4) : w;
   }
   shadowAt(x, y, z, R = 42) {
     if (R > 150) R = 150; const s = this.sun, n = s.shadow.mapSize.x, step = (2 * R) / n; // (stepped, so the edges do not crawl)

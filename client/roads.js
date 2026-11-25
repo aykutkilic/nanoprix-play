@@ -15,6 +15,10 @@ export const drawnAt = (net, x, z, y) => {
   for (const d of net.discs) { const dx = d.x - x, dz = d.z - z; if (dx * dx + dz * dz < d.r * d.r && Math.abs(d.h - y) < 1) m = Math.max(m, 0.04 - 0.036 * Math.max(0, Math.hypot(dx, dz) / d.r - 0.85) / 0.15); }
   return m < 0 ? 0.02 : m;
 };
+// the edge of a road, going out from the asphalt's rim: a kerb (a wall by a motorway or on a bridge), then the pavement
+const KERB = 0.13, kerbOf = (style, bridge) => ({ H: style === 'motorway' ? 0.2 : bridge ? 0.22 : 0.13, top: 0.06, walk: style === 'motorway' ? 0.1 : 0.55 });
+// how far above the rim one stands there, `o` out from it; null: that is not on it
+const stepUp = (style, bridge, o, tight) => { const k = kerbOf(style, bridge); return o < -0.02 || o > KERB + (tight ? 0 : k.walk + 0.03) ? null : o < KERB + 0.005 ? k.H : k.top; };
 const RANK = { spur: 0, lane: 0, street: 0, shore: 1, avenue: 2, motorway: 3 };
 export function buildRoads(W) {
   const { root, net, night, height, coast } = W, V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -70,9 +74,13 @@ export function buildRoads(W) {
   const makeKerb = () => ({ pos: [], col: [], idx: [] });
   // a profile swept along an edge: pairs of points already in world space
   const strip = (K, a, b, col) => { const n = K.pos.length / 3; K.pos.push(...a[0], ...a[1], ...b[0], ...b[1]); for (let k = 0; k < 4; k++) K.col.push(...col); K.idx.push(n, n + 2, n + 1, n + 1, n + 2, n + 3); };
-  const profile = (p, nx, nz, y, r, side, bridge) => { // nx, nz point outwards; returns the profile's points
-    const at = (o, up) => [p[0] + nx * o, y + up, p[1] + nz * o], H = r.style === 'motorway' ? 0.2 : bridge ? 0.22 : 0.13, walk = r.style === 'motorway' ? 0.1 : 0.55;
-    const pts = [at(0, -0.02), at(0.02, H), at(0.11, H), at(0.13, bridge ? 0.05 : 0.06), at(0.13 + walk, 0.06)];
+  // does the pavement beside an edge lie on another road? (then there is only the kerb); does the edge stand over one?
+  const crowded = (x, z, nx, nz, y, self, w) => { for (const o of w) { let c = false; const px = x + nx * o, pz = z + nz * o; net.around(px, pz, (r, i, t, d, h) => { if (r !== self && d < r.hw && Math.abs(h - y) < 0.9) c = true; }); if (c) return true; } return false; };
+  const above = (x, z, y, self) => { let c = false; net.around(x, z, (r, i, t, d, h) => { if (r !== self && d < r.hw + 0.7 && h < y - 0.85 && h > y - 4) c = true; }); return c; };
+  const profile = (p, nx, nz, y, r, side, bridge, tight) => { // nx, nz point outwards; returns the profile's points
+    const at = (o, up) => [p[0] + nx * o, y + up, p[1] + nz * o], { H, top, walk } = kerbOf(r.style, bridge);
+    if (tight) { const a = [at(0, -0.02), at(0.02, H), at(0.11, H), at(KERB, -0.3)]; return bridge ? [...a, at(-r.hw * 0.4, -0.42)] : a; }
+    const pts = [at(0, -0.02), at(0.02, H), at(0.11, H), at(KERB, bridge ? 0.05 : top), at(KERB + walk, top)];
     const g = height(p[0] + nx * (walk + 0.2), p[1] + nz * (walk + 0.2));
     pts.push(at(0.15 + walk, bridge ? -0.34 : Math.min(-0.2, Math.max(-3, g - y - 0.4))));
     if (bridge) pts.push(at(-r.hw * 0.4, -0.42));
@@ -80,12 +88,14 @@ export function buildRoads(W) {
   };
   const COLS = (r) => [r.style === 'motorway' ? RAIL : r.style === 'shore' ? SHORE : CONC, r.style === 'motorway' ? RAIL : CONC, CONC, PAVE, SIDE, SIDE];
   const batch = new Batch(), finish = (K) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(K.pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(K.col, 3)); g.setIndex(K.idx); normals(g); batch.add(pack(g), kerb, 1.35); };
-  kerb.side = THREE.DoubleSide; weathered(kerb, { snow: 0.9, wet: 0.35, shine: 0.4 });
+  W.kerbStone = kerb; kerb.side = THREE.DoubleSide; weathered(kerb, { snow: 0.9, wet: 0.35, shine: 0.4 });
+  const rims = (W.rims = []), rounds = new Map(); // (where there is a kerb, for who walks)
   for (const r of net.roads) {
     const up = lift(r), LAT = [-1, -0.4, 0.4, 1], PIECE = 48, A = net.hubs.get(r.a), B = net.hubs.get(r.b);
     const frame = (i) => { const a = Math.max(0, i - 1) * 3, b = Math.min(r.n - 1, i + 1) * 3, dx = r.p[b] - r.p[a], dz = r.p[b + 1] - r.p[a + 1], l = Math.hypot(dx, dz) || 1; return [r.p[i * 3], r.p[i * 3 + 1], r.p[i * 3 + 2], dx / l, dz / l]; };
     const F = Array.from({ length: r.n }, (_, i) => frame(i));
-    const edges = [1, -1].map((sd) => F.map(([x, z, y, dx, dz], i) => { const ex = x - dz * sd * r.hw, ez = z + dx * sd * r.hw, yy = hAt(ex, ez, y); return { p: [ex, ez], y: yy, nx: -dz * sd, nz: dx * sd, free: !(r.tunnel && (r.tunnel[i] || 0) === 2) && !covered(ex, ez, y, r), bridge: r.bridge[i] === 1 && height(ex, ez) < y - 0.5 }; }));
+    const edges = [1, -1].map((sd) => F.map(([x, z, y, dx, dz], i) => { const ex = x - dz * sd * r.hw, ez = z + dx * sd * r.hw, yy = hAt(ex, ez, y); return { p: [ex, ez], y: yy, nx: -dz * sd, nz: dx * sd, free: !(r.tunnel && (r.tunnel[i] || 0) === 2) && !covered(ex, ez, y, r), bridge: (r.bridge[i] === 1 && height(ex, ez) < y - 0.5) || above(ex, ez, yy, r), tight: r.style !== 'motorway' && crowded(ex, ez, -dz * sd, dx * sd, yy, r, [0.3, 0.6]) }; }));
+    rims[r.index] = edges.map((E) => ({ f: Uint8Array.from(E, (e) => (e.free ? (e.bridge ? 2 : 1) + (e.tight ? 4 : 0) : 0)), y: Float32Array.from(E, (e) => e.y + up) }));
     for (let i0 = 0, i1 = 0; i0 < r.n - 1; i0 = i1) {
       i1 = Math.min(r.n - 1, i0 + PIECE); const tube = !!r.tunnel && r.tunnel[i0] === 2 && r.tunnel[i0 + 1] === 2; if (r.tunnel) for (let q = i0 + 1; q < i1; q++) if ((r.tunnel[q] === 2 && r.tunnel[q + 1] === 2) !== tube) { i1 = q; break; }
       const pos = [], road = [], hub = [], idx = [], K = makeKerb();
@@ -97,11 +107,11 @@ export function buildRoads(W) {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aRoad', new THREE.Float32BufferAttribute(road, 4)); g.setAttribute('aHub', new THREE.Float32BufferAttribute(hub, 1)); g.setIndex(idx); normals(g);
       if (g.attributes.normal.getY(0) < 0) { for (let k = 0; k < idx.length; k += 3) { const t = idx[k]; idx[k] = idx[k + 1]; idx[k + 1] = t; } g.setIndex(idx); normals(g); }
       batch.add(pack(g), tube ? inside : asphalt, 1.6);
-      edges.forEach((E, e) => { for (let i = i0; i < i1; i++) { const a = E[i], b = E[i + 1]; if (!a.free || !b.free) continue; const pa = profile(a.p, a.nx, a.nz, a.y + up, r, e, a.bridge && b.bridge), pb = profile(b.p, b.nx, b.nz, b.y + up, r, e, a.bridge && b.bridge), C = COLS(r); for (let k = 0; k + 1 < pa.length; k++) strip(K, [pa[k], pa[k + 1]], [pb[k], pb[k + 1]], C[Math.min(k, C.length - 1)]); } });
+      edges.forEach((E, e) => { for (let i = i0; i < i1; i++) { const a = E[i], b = E[i + 1]; if (!a.free || !b.free) continue; const pa = profile(a.p, a.nx, a.nz, a.y + up, r, e, a.bridge && b.bridge, a.tight || b.tight), pb = profile(b.p, b.nx, b.nz, b.y + up, r, e, a.bridge && b.bridge, a.tight || b.tight), C = COLS(r); for (let k = 0; k + 1 < pa.length; k++) strip(K, [pa[k], pa[k + 1]], [pb[k], pb[k + 1]], C[Math.min(k, C.length - 1)]); } });
       if (K.idx.length) finish(K);
     }
     // lamps, by turns on either side (the light pools of the asphalt's shader)
-    for (let s = 5, k = 0; s < r.len - 3; s += r.spur ? 20 : 10, k++) { const i = Math.min(r.n - 2, Math.round((s / r.len) * (r.n - 1))), E = edges[k % 2 ? 0 : 1][i]; if (E.free && !(r.tunnel && r.tunnel[i]) && !(net.transit && net.transit.over(E.p[0], E.p[1], E.y - 0.4, E.y + 1.5))) lamps.push([E.p[0] + E.nx * 0.3, E.y, E.p[1] + E.nz * 0.3, Math.atan2(-E.nx, -E.nz)]); }
+    for (let s = 5, k = 0; s < r.len - 3; s += r.spur ? 20 : 10, k++) { const i = Math.min(r.n - 2, Math.round((s / r.len) * (r.n - 1))), E = edges[k % 2 ? 0 : 1][i]; if (E.free && !E.tight && !(r.tunnel && r.tunnel[i]) && !(net.transit && net.transit.over(E.p[0], E.p[1], E.y - 0.4, E.y + 1.5))) lamps.push([E.p[0] + E.nx * 0.3, E.y, E.p[1] + E.nz * 0.3, Math.atan2(-E.nx, -E.nz)]); }
     if (r.id !== 'bogaz' && r.id !== 'fsm' && r.id !== 'yss') for (let i = 4; i < r.n - 4; i += 5) if (r.bridge[i]) { const [x, z, y, dx, dz] = F[i], gy = Math.max(-1.4, height(x, z)); if (y - gy > 0.9) { let under = false; net.around(x, z, (o, j, t, d, h) => { if (o !== r && d < o.hw + 0.4 && h < y - 0.6) under = true; }); if (!under && !(net.transit && net.transit.over(x, z, gy - 2, y - 0.3, 0.5))) piers.push([x, gy - 0.2, z, r.hw, y - 0.3 - gy + 0.2, Math.atan2(dx, dz)]); } }
   }
   for (const r of net.roads) if (r.tunnel) buildTube(W, r, lift);
@@ -114,10 +124,22 @@ export function buildRoads(W) {
     batch.add(pack(g), asphalt, 1.6, false);
 
     const K = makeKerb(), fake = { style: 'avenue', hw: 2 };
-    const E = Array.from({ length: 49 }, (_, k) => { const t = (k / 48) * Math.PI * 2, nx = Math.sin(t), nz = Math.cos(t), x = d.x + nx * d.r, z = d.z + nz * d.r; let on = false; net.around(x, z, (r, i, tt, D, h) => { if (D < r.hw - 0.02 && Math.abs(h - d.h) < 0.9) on = true; }); if (net.transit && net.transit.mouth(x, z)) on = true; return { p: [x, z], nx, nz, y: y0(x, z), free: !on }; });
-    for (let k = 0; k < 48; k++) { const a = E[k], b = E[k + 1]; if (!a.free || !b.free) continue; const pa = profile(a.p, a.nx, a.nz, a.y, fake, 0, false), pb = profile(b.p, b.nx, b.nz, b.y, fake, 0, false), C = COLS(fake); for (let q = 0; q + 1 < pa.length; q++) strip(K, [pa[q], pa[q + 1]], [pb[q], pb[q + 1]], C[q]); }
+    const E = Array.from({ length: 49 }, (_, k) => { const t = (k / 48) * Math.PI * 2, nx = Math.sin(t), nz = Math.cos(t), x = d.x + nx * d.r, z = d.z + nz * d.r; let on = false; net.around(x, z, (r, i, tt, D, h) => { if (D < r.hw - 0.02 && Math.abs(h - d.h) < 0.9) on = true; }); if (net.transit && net.transit.mouth(x, z)) on = true; return { p: [x, z], nx, nz, y: y0(x, z), free: !on, tight: !on && crowded(x, z, nx, nz, y0(x, z), null, [0.35, 0.6]) }; });
+    for (let k = 0; k < 48; k++) { const a = E[k], b = E[k + 1]; if (!a.free || !b.free) continue; const pa = profile(a.p, a.nx, a.nz, a.y, fake, 0, false, a.tight || b.tight), pb = profile(b.p, b.nx, b.nz, b.y, fake, 0, false, a.tight || b.tight), C = COLS(fake); for (let q = 0; q + 1 < pa.length; q++) strip(K, [pa[q], pa[q + 1]], [pb[q], pb[q + 1]], C[q]); }
     if (K.idx.length) finish(K);
+    { const e = { d, f: Uint8Array.from(E, (q) => (q.free ? (q.tight ? 5 : 1) : 0)), y: Float32Array.from(E, (q) => q.y) }, R = d.r + 0.8; for (let a = Math.floor((d.x - R) / 8); a <= Math.floor((d.x + R) / 8); a++) for (let b = Math.floor((d.z - R) / 8); b <= Math.floor((d.z + R) / 8); b++) { const k = a * 8192 + b; if (!rounds.has(k)) rounds.set(k, []); rounds.get(k).push(e); } }
   }
+  // the top of the kerb or pavement at (x, z), about y, as it is drawn; null: there is none
+  const near = new Map(); W.kerbAt = (x, z, y) => {
+    let best = null; const take = (h) => { if (Math.abs(h - y) < 0.7 && (best === null || h > best)) best = h; };
+    near.clear(); net.around(x, z, (r, i, t, d) => { let e = near.get(r.index); if (!e) near.set(r.index, (e = { r, d: 1e9 })); if (d < e.d) { e.d = d; e.i = i; e.t = t; } }); // (of each road the stretch one is by)
+    for (const { r, i, t, d } of near.values()) {
+      const o = d - r.hw; if (o < -0.02 || o > 0.72 || (t <= 0 && i === 0) || (t >= 1 && i === r.n - 2)) continue; const a = i * 3, p = r.p, side = -(x - p[a]) * (p[a + 4] - p[a + 1]) + (z - p[a + 1]) * (p[a + 3] - p[a]) > 0 ? 0 : 1, e = rims[r.index][side]; if (!e.f[i] || !e.f[i + 1]) continue;
+      const u = stepUp(r.style, !!(e.f[i] & e.f[i + 1] & 2), o, !!((e.f[i] | e.f[i + 1]) & 4)); if (u !== null) take(e.y[i] + (e.y[i + 1] - e.y[i]) * t + u);
+    }
+    for (const { d, f, y: Y } of rounds.get(Math.floor(x / 8) * 8192 + Math.floor(z / 8)) || []) { const dx = x - d.x, dz = z - d.z, a = ((Math.atan2(dx, dz) / (Math.PI * 2) + 1) % 1) * 48, k = Math.min(47, Math.floor(a)), u = stepUp('avenue', false, Math.hypot(dx, dz) - d.r, !!((f[k] | f[k + 1]) & 4)); if (u === null) continue; if (f[k] && f[k + 1]) take(Y[k] + (Y[k + 1] - Y[k]) * (a - k) + u); }
+    return best;
+  };
   batch.flush(W);
   // ------------------------------------------------------------ lamps and piers
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), UP = V(0, 1, 0);
@@ -130,5 +152,6 @@ export function buildRoads(W) {
     for (const m of [inst(post, pole, L, put(0, 0)), inst(new THREE.BoxGeometry(0.09, 0.05, 0.2), bulb, L, put(0.42, 1.22), false)]) if (m) { m.frustumCulled = true; m.computeBoundingSphere(); m.boundingSphere && W.keeper.parts.push({ o: m, x: m.boundingSphere.center.x, z: m.boundingSphere.center.z, r: m.boundingSphere.radius, reach: 0.8, max: 1e9, off: 0, held: false }); }
   }
   inst(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), W.mat('#9a948a', { roughness: 0.9 }), piers, ([x, y, z, hw, h, a]) => M.compose(V(x, y, z), Q.setFromAxisAngle(UP, a), V(hw * 1.1, h, 0.7)));
+  for (const [x, y, z] of lamps) (W.posts ||= []).push([x, y, z, 0.035, 1.25]);
   W.lampCount = lamps.length;
 }

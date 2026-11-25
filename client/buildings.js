@@ -26,7 +26,7 @@ export function buildBuildings(W) {
   const { A, night } = W, tiles = new Map(), list = []; W.houses = []; W.buildings = 0;
   // a piece of the city has come
   A.stream.on('h', (t, b) => {
-    const { n: count, B } = readHouses(b, A.map); let sea = false;
+    const { n: count, B, T } = readHouses(b, A.map); let sea = false; if (T.length) { const q = { T, x0: 1e9, z0: 1e9, x1: -1e9, z1: -1e9 }; for (let k = 0; k < T.length; k += 4) { const x = T[k] / 20, z = T[k + 1] / 20; q.x0 = Math.min(q.x0, x); q.x1 = Math.max(q.x1, x); q.z0 = Math.min(q.z0, z); q.z1 = Math.max(q.z1, z); } (W.trees ||= []).push(q); }
     for (let k = 0, o = 0; k < count; k++) {
       const x = B[o] / 20, z = B[o + 1] / 20, n = B[o + 5] & 255, key = Math.floor(x / TILE) * 4096 + Math.floor(z / TILE);
       let t = tiles.get(key); if (!t) { tiles.set(key, (t = { x: (Math.floor(x / TILE) + 0.5) * TILE, z: (Math.floor(z / TILE) + 0.5) * TILE, B, at: [], base: null, fine: null, used: 0 })); list.push(t); } t.at.push(o);
@@ -35,6 +35,8 @@ export function buildBuildings(W) {
     }
     W.houses.push({ t, B, n: count }); W.buildings += count; if (sea) W.lampsAt = performance.now() + 1500;
   });
+  // each house that may reach a place: fn(B, where in it)
+  W.eachHouse = (x, z, fn, R = 14) => { for (let a = Math.floor((x - R) / TILE); a <= Math.floor((x + R) / TILE); a++) for (let b = Math.floor((z - R) / TILE); b <= Math.floor((z + R) / TILE); b++) { const t = tiles.get(a * 4096 + b); if (t) for (const o of t.at) fn(t.B, o); } };
   // ------------------------------------------------------------ the fronts
   const wall = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
   wall.onBeforeCompile = (s) => {

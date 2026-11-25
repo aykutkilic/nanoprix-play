@@ -15,7 +15,7 @@ export function buildSignals(W) {
     for (const dir of [1, -1]) {
       const f = frame(r, q.s - dir * 0.85, dir), rx = -f.dz, rz = f.dx, yaw = Math.atan2(-f.dx, -f.dz); quad(f, 0.1, r.hw - 0.22, -0.07, 0.07, 0.62);
       const px = f.x + rx * (r.hw + 0.3), pz = f.z + rz * (r.hw + 0.3), k = net.at(px, pz, f.y, null, out); if (k && k.inside > -0.1 && Math.abs(k.h - f.y) < 0.8) continue;
-      const wide = r.style !== 'lane' && r.style !== 'street'; posts.push([px, f.y - 0.3, pz, yaw, 0.09, wide ? 2.75 : 1.75, 0.09]);
+      const wide = r.style !== 'lane' && r.style !== 'street'; posts.push([px, f.y - 0.3, pz, yaw, 0.09, wide ? 2.75 : 1.75, 0.09]); (W.posts ||= []).push([px, f.y, pz, 0.06, 1.4]);
       const head = (x, y, z) => { heads.push([x, y, z, yaw]); [0.2, 0, -0.2].forEach((dy, i) => lamps.push({ x: x - f.dx * 0.1, y: y + dy, z: z - f.dz * 0.1, yaw, i, q })); };
       head(px - f.dx * 0.1, f.y + 1.2, pz - f.dz * 0.1);
       if (wide) { const reach = r.hw * 0.62; posts.push([px - (rx * reach) / 2, f.y + 2.36, pz - (rz * reach) / 2, yaw, reach, 0.07, 0.07]); head(px - rx * reach - f.dx * 0.06, f.y + 2.2, pz - rz * reach - f.dz * 0.06); }

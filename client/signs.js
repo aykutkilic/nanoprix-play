@@ -79,6 +79,7 @@ export function buildSigns(W) {
     const rect = !['limit', 'bend', 'hill', 'lights', 'blocked'].includes(s.kind); if (rect) backs.push([cx, y0 + h / 2, cz, yaw, w * 0.99, h * 0.97, 0.04]);
     if (s.kind === 'gantry') { const span = s.hw * 2 + 0.68; posts.push([s.x, s.y - 0.3, s.z, yaw, 0.16, 3.4, 0.16], [s.x - rx * span, s.y - 0.3, s.z - rz * span, yaw, 0.16, 3.4, 0.16]); for (const e of [2.5, 2.95]) backs.push([s.cx + s.dx * 0.1, s.y + e, s.cz + s.dz * 0.1, yaw, span, 0.09, 0.09]); } else { posts.push([s.x, s.y - 0.4, s.z, yaw, big ? 0.14 : 0.06, low + 0.4 + (big ? h * 0.9 : rect ? h : h * 0.7), big ? 0.14 : 0.06]); if (big) backs.push([s.x + (rx * off) / 2 + s.dx * 0.08, y0 + h * 0.5, s.z + (rz * off) / 2 + s.dz * 0.08, yaw, Math.abs(off) + 0.2, 0.08, 0.08]); }
   }
+  for (const [x, y, z, , w, h] of posts) (W.posts ||= []).push([x, y + 0.35, z, w * 0.6, h - 0.35]);
   const draw = (p) => { const c = document.createElement('canvas'); c.width = c.height = PAGE; const g = c.getContext('2d'); for (const [q, x, y, w, h] of p.items) { g.save(); g.translate(x, y); g.beginPath(); g.rect(0, 0, w, h); g.clip(); drawSign(g, q, w, h); g.restore(); } return c; };
   for (const p of pages) {
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(p.nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(p.uv, 2)); g.setIndex(p.idx); g.computeBoundingSphere();

@@ -2,6 +2,8 @@
 // E gets out, in, down to a station, aboard and off; R on foot has the car brought.
 import { HALL, Below } from './under.js';
 import { makePerson } from './person.js';
+import { drawnAt } from './roads.js';
+import { Solids } from './solid.js';
 import { hm } from '../shared/clock.js';
 import { t } from './i18n.js';
 import { esc } from './hud.js';
@@ -19,12 +21,22 @@ export class Trip {
   // the ground underfoot at (x, z), about y: null, one may not walk there
   foot(x, z, y) {
     const G = this.game; if (this.hall) { const { way, s } = this.hall, f = this.hall.f0 ||= way.frame(s), dx = x - f[0], dz = z - f[2], v = dx * f[3] + dz * f[4]; if (Math.abs(v) > HALL.L - 0.4) return null; const g = way.frame(s + v), u = -(x - g[0]) * g[4] + (z - g[2]) * g[3]; return Math.abs(u) < HALL.W - 0.2 ? g[1] + (Math.abs(u) > HALL.E ? HALL.Y : 0.02) : null; }
-    const q = G.net.at(x, z, y + 0.1, null, (this.q ||= {})), on = q && q.inside > -0.15 ? q.h : null; let best = null, path = -99;
+    const q = G.net.at(x, z, y + 0.1, null, (this.q ||= {})), W = G.view.world, kerb = W.kerbAt(x, z, y), on = q && q.inside > -0.15 ? Math.max(kerb ?? -99, q.inside > 0 || kerb === null ? q.h + (q.inside > 0 ? drawnAt(G.net, x, z, q.h) : 0) : -99) : null; let best = null, path = -99;
     for (const p of this.pads || []) { // platforms and stops
       const dx = x - p.f[0], dz = z - p.f[2], k = p.way.kind; if (!p.bus && !p.under && Math.abs(dx) < 14 && Math.abs(dz) < 14) { const v = dx * p.f[3] + dz * p.f[4], L = k === 'mbus' ? 3.4 : k === 'tram' ? 3.6 : k === 'old' ? 2 : /Söğütlü/.test(p.name) ? 11.5 : 8.6; if (Math.abs(v) < L) { const g = p.way.frame(p.s + v), u = Math.abs(-(x - g[0]) * g[4] + (z - g[2]) * g[3]), tr = k === 'tram' || k === 'old', inRoad = tr && p.way.st[g[5]] === 3, E = k === 'mbus' ? 0 : tr ? 0.66 : 0.84, X = k === 'mbus' ? 0.2 : tr ? 1.24 : 1.8; if (!inRoad && u <= X + 0.05) { const h = g[1] + (u >= E - 0.02 ? (k === 'mbus' ? 0.13 : tr ? 0.11 : 0.2) : 0.03); if (Math.abs(h - y) < 1.6 || on === null) { if (best === null || Math.abs(h - y) < Math.abs(best - y)) best = h; } } } }
       if (on === null) { const d = Math.hypot(x - p.x, z - p.z), l = this.link(p); let ok = d < (p.under ? 3.2 : p.bus ? 1.7 : 2.6); if (ok) path = Math.max(path, 0.3); if (!ok && l) { const ex = l.x - p.x, ez = l.z - p.z, L2 = ex * ex + ez * ez || 1, u = Math.max(0, Math.min(1, ((x - p.x) * ex + (z - p.z) * ez) / L2)); ok = Math.hypot(x - p.x - ex * u, z - p.z - ez * u) < 0.95; if (ok && !p.under && !p.bus) path = Math.max(path, this.TR.linkY(p, l, u)); else if (ok) path = Math.max(path, 0.3); } }
     }
-    if (best !== null && (on === null || Math.abs(best - y) <= Math.abs(on - y) + 0.12)) return best; if (on !== null) return on; if (q && q.inside > -1.35 && Math.abs(q.h - y) < 1.4) { const g = G.view.world.height(x, z); return Math.abs(g - q.h) < 0.7 ? Math.max(g, q.h - 0.2) : q.h; } if (path > -50) { const W = G.view.world; return W.coast(x, z) > 0.25 ? W.height(x, z) : path; } return null;
+    if (best !== null && (on === null || Math.abs(best - y) <= Math.abs(on - y) + 0.12)) return best; if (on !== null) return on;
+    if (kerb !== null) { const g = W.height(x, z); return Math.abs(g - kerb) < 0.35 ? Math.max(g, kerb) : kerb; } // (the pavement)
+    if (q && q.inside > -1.35 && Math.abs(q.h - y) < 1.4 && W.coast(x, z) > 0.1) { const g = W.height(x, z); if (Math.abs(g - q.h) < 0.6) return g; } // (and the ground beside it, unless it falls away)
+    return path > -50 ? (W.coast(x, z) > 0.25 ? W.height(x, z) : path) : null;
+  }
+  // is this on the way to a station, or at its door? (houses do not stand in it)
+  way(x, z) { for (const p of this.pads || []) { if (Math.hypot(x - p.x, z - p.z) < 3.2) return true; const l = this.link(p); if (!l) continue; const ex = l.x - p.x, ez = l.z - p.z, u = Math.max(0, Math.min(1, ((x - p.x) * ex + (z - p.z) * ez) / (ex * ex + ez * ez || 1))); if (Math.hypot(x - p.x - ex * u, z - p.z - ez * u) < 0.95) return true; } return false; }
+  // (x, z) moved out of whatever stands there
+  aside(x, z, y, now) {
+    const G = this.game, S = (this.solid && this.solid.W === G.view.world ? this.solid : (this.solid = new Solids(G.view.world))), cars = (this.hard ||= []); S.about(x, z, now); cars.length = 0;
+    cars.push(G.me); for (const c of G.cars.values()) if (!c.mine && !c.st.foot && c.buf.length) cars.push(c.st); if (G.cv && G.cv.near) cars.push(...G.cv.near); cars.push(...this.TR.about(x, z, G.t)); const on = !this.way(x, z), o = S.push(x, z, y, 0.1, on, cars), m = this.me; if (on && S.walled(o.x, o.z, y) && !S.walled(m.x, m.z, y)) { o.x = m.x; o.z = m.z; } return o; // (between two houses there may be no room)
   }
   // ---------------------------------------------------------------- E
   act() {
@@ -61,8 +73,12 @@ export class Trip {
     const G = this.game, V = G.view; this.note = ''; this.alone = G.cars.size === 1; if (this.mode !== 'car' && this.alone && G.input.keys.has('KeyZ') && now - (this.skipAt || 0) > 90) { this.skipAt = now; G.link.send({ t: 'skip', ms: 1000 }); } if (this.mode === 'car') { V.rig = null; if (this.stopping) { if (now - this.stopping > 6000 || G.aboard) this.stopping = 0; else if (Math.abs(G.me.speed) < 1.6) { this.stopping = 0; if (G.net.under(G.me) !== 2) { this.getOut(); return this.me; } } else G.brakeFor = 0.25; } this.panel(now, T); return null; }
     if (this.mode === 'walk') {
       const m = this.me; if (now - (this.padAt || 0) > 900) { this.padAt = now; this.pads = this.near(m.x, m.z, 60); }
-      const k = V.cam.mode === 3 ? 0 : 1; void k; m.yaw = wrap(m.yaw - inp.steer * dt * 2.9); const go = inp.gas - inp.brake * 0.6, v = go * (inp.turbo ? RUN : WALK), fx = Math.sin(m.yaw), fz = Math.cos(m.yaw); let x = m.x + fx * v * dt, z = m.z + fz * v * dt, y = this.foot(x, z, m.y); if (y === null) { for (const a of [0.7, -0.7, 1.2, -1.2]) { const X = m.x + Math.sin(m.yaw + a) * v * dt * 0.6, Z = m.z + Math.cos(m.yaw + a) * v * dt * 0.6, Y = this.foot(X, Z, m.y); if (Y !== null) { x = X; z = Z; y = Y; break; } } } const moved = y !== null ? Math.hypot(x - m.x, z - m.z) / Math.max(1e-3, dt) : 0; if (y !== null) { m.x = x; m.z = z; m.y += (y - m.y) * Math.min(1, dt * 9); } else { const h = this.foot(m.x, m.z, m.y); if (h !== null) m.y += (h - m.y) * Math.min(1, dt * 9); } if (!this.hall) { const car = G.me, dx = m.x - car.x, dz = m.z - car.z, d = Math.hypot(dx, dz); if (d < 0.42 && d > 1e-3 && Math.abs(car.y - m.y) < 0.8) { const k = v * dt * 0.8; m.x = car.x + (dx / d) * 0.42 - (dz / d) * k; m.z = car.z + (dz / d) * 0.42 + (dx / d) * k; } }
-      m.speed = moved * Math.sign(go || 1); m.vx = fx * m.speed; m.vz = fz * m.speed; this.person.position.set(m.x, m.y, m.z); this.person.rotation.y = m.yaw; this.person.userData.step(dt, moved); V.rig = this.hall ? { kind: 'hall', f: (this.hall.f0 ||= this.hall.way.frame(this.hall.s)), way: this.hall.way, s: this.hall.s } : { kind: 'walk' };
+      const k = V.cam.mode === 3 ? 0 : 1; void k; m.yaw = wrap(m.yaw - inp.steer * dt * 2.9); const go = inp.gas - inp.brake * 0.6, v = go * (inp.turbo ? RUN : WALK), fx = Math.sin(m.yaw), fz = Math.cos(m.yaw); let x = m.x + fx * v * dt, z = m.z + fz * v * dt;
+      if (!this.hall) { const o = this.aside(x, z, m.y, now); x = o.x; z = o.z; }
+      let y = this.foot(x, z, m.y); if (y === null) { for (const a of [0.7, -0.7, 1.2, -1.2]) { let X = m.x + Math.sin(m.yaw + a) * v * dt * 0.6, Z = m.z + Math.cos(m.yaw + a) * v * dt * 0.6; if (!this.hall) { const o = this.aside(X, Z, m.y, now); X = o.x; Z = o.z; } const Y = this.foot(X, Z, m.y); if (Y !== null) { x = X; z = Z; y = Y; break; } } }
+      const moved = y !== null ? Math.min(RUN, Math.hypot(x - m.x, z - m.z) / Math.max(1e-3, dt)) : 0; if (y !== null) { m.x = x; m.z = z; } else y = this.foot(m.x, m.z, m.y);
+      if (y !== null) { if (moved > 0.1) { const h = this.foot(m.x + fx * Math.sign(go || 1) * 0.06, m.z + fz * Math.sign(go || 1) * 0.06, m.y); if (h !== null && h > y && h < y + 0.3) y = h; } m.y += (y - m.y) * Math.min(1, dt * (y > m.y ? 26 : 14)); } // (a step up is taken before it is reached)
+      m.speed = moved * Math.sign(go || 1); m.vx = fx * m.speed; m.vz = fz * m.speed; this.person.position.set(m.x, m.y, m.z); this.person.rotation.y = m.yaw; this.person.visible = !V.close; this.person.userData.step(dt, go ? moved * Math.sign(go) : 0); V.rig = this.hall ? { kind: 'hall', f: (this.hall.f0 ||= this.hall.way.frame(this.hall.s)), way: this.hall.way, s: this.hall.s } : { kind: 'walk', solid: this.solid };
       const open = this.openNear(), car = G.me; this.note = open ? `E · ${t('getOn')} ${badge(open.p.ref, open.p.color)} ${esc(open.p.to)}${this.hall ? ` · Q · ${t('goUp')}` : ''}` : this.hall ? `E · ${t("goUp")}` : Math.hypot(car.x - m.x, car.z - m.z) < 1.5 && Math.abs(car.y - m.y) < 1.2 ? `E · ${t('getIn')}` : (() => { const d = this.near(m.x, m.z, 2.4).find((p) => p.under && !p.shut && Math.hypot(p.x - m.x, p.z - m.z) < 2.1); return d ? `E · ${t('goDown')} ${badge(d.way.ref, d.way.color)} ${esc(d.name)}` : `R · ${t('fetchCar')}`; })(); this.panel(now, T); return m;
     }
     // aboard

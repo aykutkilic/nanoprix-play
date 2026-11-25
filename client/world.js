@@ -69,11 +69,18 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   weathered(ground, { snow: 0.94, wet: 0.42, shine: 0.42 });
   const cols = Math.ceil((g.w - 1) / CHUNK), rows = Math.ceil((g.h - 1) / CHUNK), pieces = [];
   const hAt = (i, j) => A.H[Math.min(g.h - 1, Math.max(0, j)) * g.w + Math.min(g.w - 1, Math.max(0, i))];
+  // (the coarser ground keeps under the roads as the fine ground does: lowered where a triangle would stand out over one)
+  const coarse = {}; { const on = new Uint8Array(g.w * g.h); for (const r of net.roads) for (let i = 0; i < r.n; i++) { if (r.tunnel && r.tunnel[i] === 2) continue; const x = (r.p[i * 3] - g.x0) / g.step, z = (r.p[i * 3 + 1] - g.z0) / g.step, R = (r.hw + 2.9) / g.step; for (let b = Math.max(0, Math.ceil(z - R)); b <= Math.min(g.h - 1, z + R); b++) for (let a = Math.max(0, Math.ceil(x - R)); a <= Math.min(g.w - 1, x + R); a++) if ((a - x) ** 2 + (b - z) ** 2 < R * R) on[b * g.w + a] = 1; }
+    for (const d of net.discs) { const x = (d.x - g.x0) / g.step, z = (d.z - g.z0) / g.step, R = (d.r + 2.9) / g.step; for (let b = Math.max(0, Math.ceil(z - R)); b <= Math.min(g.h - 1, z + R); b++) for (let a = Math.max(0, Math.ceil(x - R)); a <= Math.min(g.w - 1, x + R); a++) on[b * g.w + a] = 1; }
+    const L = []; for (let k = 0; k < on.length; k++) if (on[k]) L.push(k);
+    for (const st of [2, 4]) { const w = Math.ceil((g.w - 1) / st) + 1, C = new Float32Array(w * (Math.ceil((g.h - 1) / st) + 1)); for (let k = 0; k < C.length; k++) C[k] = hAt((k % w) * st, Math.floor(k / w) * st); coarse[st] = { w, C };
+      for (let pass = 0, more = true; pass < 12 && more; pass++) { more = false; for (const k of L) { const i = k % g.w, j = (k - i) / g.w, a = Math.min(w - 2, Math.floor(i / st)), b = Math.floor(j / st), p = i / st - a, q = j / st - b, c = b * w + a; if (c + w + 1 >= C.length) continue; const low = p + q <= 1, O = low ? c : c + w + 1, u = low ? p : 1 - p, v = low ? q : 1 - q, I = low ? c + 1 : c + w, Q = low ? c + w : c + 1, t = 1 - u - v, e = C[O] * t + C[I] * u + C[Q] * v - A.H[k] - 0.01; if (e > 0) { const s = e / (t * t + u * u + v * v); C[O] -= s * t; C[I] -= s * u; C[Q] -= s * v; more = true; } } } }
+  }
   const makePiece = (ci, cj, st) => {
     const n = CHUNK / st, S = n + 3, pos = new Float32Array(S * S * 3), nor = new Float32Array(S * S * 3), idx = []; // (one ring of skirt round it)
     for (let b = 0; b < S; b++) for (let a = 0; a < S; a++) {
       const skirt = a === 0 || b === 0 || a === S - 1 || b === S - 1, i = Math.min(g.w - 1, ci * CHUNK + Math.min(n, Math.max(0, a - 1)) * st), j = Math.min(g.h - 1, cj * CHUNK + Math.min(n, Math.max(0, b - 1)) * st), k = (b * S + a) * 3;
-      pos[k] = g.x0 + i * g.step; pos[k + 1] = hAt(i, j) - (skirt ? 0.5 * st : 0); pos[k + 2] = g.z0 + j * g.step;
+      pos[k] = g.x0 + i * g.step; pos[k + 1] = (st > 1 && i % st === 0 && j % st === 0 ? coarse[st].C[(j / st) * coarse[st].w + i / st] : hAt(i, j)) - (skirt ? 0.5 * st : 0); pos[k + 2] = g.z0 + j * g.step;
       const nx = hAt(i - 1, j) - hAt(i + 1, j), nz = hAt(i, j - 1) - hAt(i, j + 1), l = Math.hypot(nx, 2 * g.step, nz); nor[k] = nx / l; nor[k + 1] = (2 * g.step) / l; nor[k + 2] = nz / l;
       if (a < S - 1 && b < S - 1) { const q = b * S + a; idx.push(q, q + S, q + 1, q + 1, q + S, q + S + 1); }
     }
@@ -196,7 +203,11 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   const crown = new THREE.IcosahedronGeometry(1, 2), cp = crown.attributes.position;
   for (let k = 0; k < cp.count; k++) { const x = cp.getX(k), y = cp.getY(k), z = cp.getZ(k), f = 0.8 + 0.3 * Math.abs(Math.sin(x * 5.1 + y * 3.3) * Math.cos(z * 4.7 + y)); cp.setXYZ(k, x * f, y * f * 0.9 + 0.85, z * f); }
   { const n = crown.attributes.normal; for (let k = 0; k < cp.count; k++) { const v = V(cp.getX(k), cp.getY(k) - 0.75, cp.getZ(k)).normalize(); n.setXYZ(k, v.x, v.y, v.z); } } // (round, not faceted)
-  const leaf = weathered(new THREE.MeshStandardMaterial({ roughness: 0.95 }), { snow: 0.85, wet: 0.2, shine: 0.6 }), cyp = new THREE.SphereGeometry(1, 6, 6).scale(0.42, 2.1, 0.42).translate(0, 1.9, 0);
+  const leafMat = new THREE.MeshStandardMaterial({ roughness: 0.95 });
+  // (no leaves between the camera and who is on foot: xyz the walker, w on)
+  W.leafCut = { value: new THREE.Vector4() }; leafMat.onBeforeCompile = (s) => { s.uniforms.uWalker = W.leafCut; s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vLeafW;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvLeafW = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;'); s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uWalker; varying vec3 vLeafW;').replace('#include <map_fragment>', `#include <map_fragment>
+    if (uWalker.w > 0.5) { vec3 d = uWalker.xyz - cameraPosition, q = vLeafW - cameraPosition; float k = clamp(dot(q, d) / max(dot(d, d), 1e-4), 0.0, 1.0), e = length(q - d * k), g = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); if (e < mix(0.55, 0.8, g)) discard; }`); };
+  const leaf = weathered(leafMat, { snow: 0.85, wet: 0.2, shine: 0.6 }), cyp = new THREE.SphereGeometry(1, 6, 6).scale(0.42, 2.1, 0.42).translate(0, 1.9, 0);
   const inst = (geo, mat, list, fn, grp, cast = true) => { if (!list.length) return; const m = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((o, k) => fn(m, o, k)); m.castShadow = cast; m.receiveShadow = true; m.computeBoundingSphere(); grp.add(m); return m; };
   const tileList = [];
   A.stream.on('h', (at, b) => { const { T } = readHouses(b, A.map), R = rng(11 + at.i * 131 + at.j * 7), tiles = new Map(); for (let k = 0; k < T.length; k += 4) { const x = T[k] / 20, z = T[k + 1] / 20; (R() < 0.14 ? put(tiles, x, z).cyp : put(tiles, x, z).trees).push([x, T[k + 2] / 400, z, T[k + 3] / 1000]); }

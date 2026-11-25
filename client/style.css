@@ -92,6 +92,8 @@ b.tl { font-variant-numeric: tabular-nums; } b.tl.no { color: #ff8a70; } #hud .b
   #hud .road { font-size: 14px; line-height: 1.25; white-space: normal; } #hud .road small { font-size: 12px; min-height: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   #hud .big { font-size: min(22vw, 26vh, 120px); width: 94vw; } #hud .big small { font-size: 18px; line-height: 1.25; } #hud .big span { font-size: min(9vw, 44px) !important; } #hud .warn { top: 44%; font-size: 17px; padding: 4px 14px; white-space: nowrap; }
   #hud .ban, #hud:has(.nav:not(:empty)) .ban { font-size: 13px; padding: 5px 12px; white-space: normal; width: max-content; text-align: center; }
+  #gl canvas { touch-action: none; } #hud .tw, #hud .time, #hud .secs, #hud .full { pointer-events: auto; } #hud .tw .mode::after { content: '›'; float: right; } #hud .time { padding: 0 14px; }
+  #hud:has(.full:not([hidden])) { z-index: 6; } #hud .full { z-index: 1; padding: 10px 12px; max-height: 94%; background: rgba(16,13,10,.96); overflow: auto; overscroll-behavior: contain; } #hud .full h3 { margin: 0 0 4px; font-size: 14px; } #hud .full h3::after { content: '✕'; float: right; opacity: .7; } #hud .full .board { font-size: 11.5px; } #hud .full .board td { padding: 3px 5px; } #hud .full .board th { padding: 2px 5px; font-size: 10px; }
   #find .find { top: calc(8px + env(safe-area-inset-top, 0px)); padding: 10px; } #find input { font-size: 16px; padding: 8px 10px; } #find li { padding: 6px 8px; font-size: 13.5px; line-height: 1.25; } #find ul { max-height: 46dvh; margin-top: 6px; } #find p { display: none; }
 }
 @media (pointer: coarse) and (orientation: portrait) {
@@ -109,4 +111,4 @@ b.tl { font-variant-numeric: tabular-nums; } b.tl.no { color: #ff8a70; } #hud .b
   #hud .nav { top: 10px; max-width: calc(100% - 388px); } #hud .trip { top: 48px; } #hud:has(.nav:not(:empty)) .trip { top: 60px; }
   #hud .road { bottom: 56px; width: calc(100% - 316px); } #hud .ban, #hud:has(.nav:not(:empty)) .ban { left: calc(50% + 51px); top: 98px; max-width: calc(100% - 326px); }
 }
-@media (pointer: coarse) and (orientation: landscape) and (max-height: 350px) { #hud .tw .mode, #hud .trip > p { display: none; } #hud .tower li { height: 16px; } #hud .trip > ul > li:nth-child(n + 4) { display: none; } }
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 350px) { #hud .tw .mode, #hud .trip > p, #hud .trip .ikart p { display: none; } #hud .tower li { height: 16px; } #hud .trip > ul > li:nth-child(n + 4) { display: none; } }

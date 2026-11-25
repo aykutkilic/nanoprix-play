@@ -64,7 +64,7 @@ function attach(l) {
       case 'car': if (game.active) game.enter(m.car); break;
       case 'gone': game.gone(m.id); break;
       case 'startAt': if (game.msg) game.msg.startAt = m.startAt; break;
-      case 'weather': game.wx = m.wx; toast(t(`w_${m.wx.to}`), 1600); break;
+      case 'weather': game.wx = m.wx; toast(t(`w_${m.wx.to}`), 1600); if (paused) draw(); break;
       case 'results': results = m; if (game.active) { setTimeout(() => { if (results === m) { raceStats = game.stats; statsMe = myId; resTab = 'classification'; game.clear(); go('results'); } }, game.finished ? 300 : 900); } break;
       case 'stopped': paused = false; game.clear(); go('room'); break;
       case 'error': toast(err(m.text)); if (!l.connected) { leave(); } else if (m.kicked || /closed|sent you/.test(m.text)) leave(); break;
@@ -100,7 +100,7 @@ function draw() {
   const menu = screen !== 'race' || paused || settingsOpen, at = `${screen}${settingsOpen}${paused}`, top = drawn === at ? $('.panel', ui)?.scrollTop : 0; drawn = at; document.body.classList.toggle('driving', screen === 'race'); input.showTouch(!menu); paint(); if (top) { const p = $('.panel', ui); if (p) p.scrollTop = top; }
 }
 function paint() {
-  const race = screen === 'race', corner = input.touchEl ? (settingsOpen || (race && paused) ? '' : `<div class="corner">${race ? `${game.free && game.mine ? '<button data-do="find">🔎</button>' : ''}<button data-do="cam">🎥</button><button data-do="menu">☰</button>` : `${nightBtn()}<button data-do="settings">⚙</button>`}</div>`) : `<div class="corner">${screen === 'race' && game.free && game.mine ? '<button data-do="find">🔎</button>' : ''}<button data-do="cam">🎥</button>${nightBtn()}<button data-do="settings">⚙</button></div>`;
+  const race = screen === 'race', corner = input.touchEl ? (settingsOpen || (race && paused) ? '' : `<div class="corner">${race ? `${game.free && game.mine ? '<button data-do="find">🔎</button>' : ''}<button data-do="seat" hidden>💺</button><button data-do="cam">🎥</button><button data-do="menu">☰</button>` : `${nightBtn()}<button data-do="settings">⚙</button>`}</div>`) : `<div class="corner">${screen === 'race' && game.free && game.mine ? '<button data-do="find">🔎</button>' : ''}<button data-do="cam">🎥</button>${nightBtn()}<button data-do="settings">⚙</button></div>`;
   if (settingsOpen) { ui.innerHTML = corner + settingsHtml(); return; }
   if (screen === 'home') ui.innerHTML = corner + homeHtml(); else if (screen === 'room') ui.innerHTML = corner + roomHtml(); else if (screen === 'results') ui.innerHTML = corner + resultsHtml(); else ui.innerHTML = corner + (paused ? pauseHtml() : '');
 }
@@ -128,7 +128,7 @@ function resultsHtml() {
   return `<div class="panel center wide"><h2>${t('results')} – ${COURSES.find((c) => c.id === R.course).name[lang()]}</h2>${st ? `<div class="row seg" style="margin-bottom:14px">${['classification', 'lapTimes', 'timing', 'charts'].map((k) => `<button data-tab="${k}" class="${k === resTab ? 'on' : ''}">${t(k)}</button>`).join('')}</div>` : ''}<div class="tabbody">${tab}</div><div class="col"><button class="main" data-do="room">${t('again')}</button></div></div>`;
 }
 function settingsHtml() { return `<div class="panel center opts"><h2>${t('settings')}</h2><label>${t('graphics')}</label>${seg('gfx', ['auto', 'high', 'medium', 'low'].map((k) => [k, t(k)]), view.gfx)}<label>${t('tilt')}</label>${seg('tilt', [[true, '✓'], [false, '✕']], view.tiltOn)}<label>${t('sound')}</label>${seg('sound', [[true, '✓'], [false, '✕']], audio.on)}<label>${t('music')}</label>${seg('music', [[true, '✓'], [false, '✕']], music.on)}<div class="row"><button class="grow" data-do="track">♪ ${t('nextTrack')}</button></div><label>${t('lang')}</label>${seg('lang', [['tr', 'Türkçe'], ['en', 'English']], lang())}${keysHtml()}<div class="col"><button class="main" data-do="settings">${t('resume')}</button></div></div>`; }
-function pauseHtml() { const am = room && room.hostId === myId; return `<div class="panel center"><h2>NANOPRIX</h2>${keysHtml()}<div class="col"><button class="main" data-do="resume">${t('resume')}</button>${input.touchEl ? `<div class="row">${nightBtn()}<button class="grow" data-do="settings">⚙ ${t('settings')}</button></div>` : ''}${am ? `<button data-do="stop">${t(game.free ? 'again' : 'quit')}</button>` : ''}${room && room.code ? `<button data-do="invite">${t('invite')} · ${room.code}</button>` : host ? `<button data-do="open" ${busy ? 'disabled' : ''}>${busy ? t('opening') : t('openOnline')}</button>` : ''}<button data-do="leave">${t('leave')}</button></div></div>`; }
+function pauseHtml() { const am = room && room.hostId === myId; return `<div class="panel center"><h2>NANOPRIX</h2><p class="desc">${t('controls')}</p><div class="col"><button class="main" data-do="resume">${t('resume')}</button>${input.touchEl ? `<div class="row">${nightBtn()}${am ? `<button class="grow" data-do="weather">${t('weather')}: ${t(`w_${game.wx.to}`)}</button>` : ''}<button class="grow" data-do="settings">⚙ ${t('settings')}</button></div>` : ''}${am ? `<button data-do="stop">${t(game.free ? 'again' : 'quit')}</button>` : ''}${room && room.code ? `<button data-do="invite">${t('invite')} · ${room.code}</button>` : host ? `<button data-do="open" ${busy ? 'disabled' : ''}>${busy ? t('opening') : t('openOnline')}</button>` : ''}<button data-do="leave">${t('leave')}</button></div></div>`; }
 const set = (o) => link && link.send({ t: 'set', settings: { ...room.settings, ...o } });
 const sendProfile = () => { saveProfile(); if (link && room) link.send({ t: 'profile', profile }); };
 ui.addEventListener('click', async (e) => {
@@ -139,7 +139,7 @@ ui.addEventListener('click', async (e) => {
   switch (d.do) {
     case 'solo': solo(); break; case 'create': create(); break; case 'join': join($('#code').value); break; case 'open': openRoom(); break; case 'leave': paused = false; leave(); break; case 'start': begin(); break;
     case 'ready': { const me = room.members.find((m) => m.id === myId); link.send({ t: 'ready', on: !me.ready }); break; }
-    case 'free': if (link) break; wantCruise = true; solo(); break; case 'room': results = null; go('room'); break; case 'resume': paused = false; draw(); break; case 'menu': paused = true; draw(); break;
+    case 'free': if (link) break; wantCruise = true; solo(); break; case 'room': results = null; go('room'); break; case 'resume': paused = false; draw(); break; case 'menu': paused = true; draw(); break; case 'seat': game.cabin.turn(); break; case 'weather': nextWeather(); break;
     case 'stop': paused = false; link.send({ t: 'lobby' }); break;
     case 'invite': { const u = `${location.origin}${location.pathname}#${room.code}`; try { await navigator.clipboard.writeText(u); toast(t('copied')); } catch { toast(u, 8000); } break; }
     case 'track': if (!music.on) music.toggle(true); music.next(); draw(); break;
@@ -151,7 +151,8 @@ ui.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id ===
 const cam = (e) => { if (e && e.preventDefault) e.preventDefault(); if (game.active && !game.fly.on) toast(t(view.nextCam()), 900); };
 input.on('F2', cam); input.on('KeyC', cam); input.on('ArrowLeft', () => game.pickWatch(-1)); input.on('ArrowRight', () => game.pickWatch(1)); input.on('KeyX', () => { if (game.active && game.cabin) game.cabin.turn(); }); input.on('KeyG', () => game.toggleAuto()); input.on('KeyE', () => game.trip.act()); input.on('KeyF', (e) => game.nav.show(e)); input.on('Slash', (e) => game.nav.show(e)); input.on('KeyQ', () => { if (game.active && game.trip.hall) game.trip.up(); }); input.on('Tab', (e) => { if (!game.active || !game.stats) return; e.preventDefault(); if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); game.showFull(); }); input.on('KeyT', () => { if (game.active && game.stats) game.nextMode(); });
 ui.addEventListener('pointermove', hover); ui.addEventListener('pointerleave', hover);
-input.on('KeyV', () => { if (!game.active || !room || room.hostId !== myId) return; const i = CHOICES.indexOf(game.wx.to); link.send({ t: 'weather', weather: CHOICES[(i + 1) % CHOICES.length] }); }); input.on('KeyN', () => { if (game.active) game.toggleNight(); else menuNight = menuNight ? 0 : 1; }); input.on('KeyR', () => game.reset());
+const nextWeather = () => { if (!game.active || !room || room.hostId !== myId) return; const i = CHOICES.indexOf(game.wx.to); link.send({ t: 'weather', weather: CHOICES[(i + 1) % CHOICES.length] }); };
+input.on('KeyV', nextWeather); if (input.touchEl) hudEl.addEventListener('click', (e) => { if (!game.active) return; if (e.target.closest('.tw')) game.nextMode(); else if (e.target.closest('.time, .secs, .full')) game.showFull(); }); input.on('KeyN', () => { if (game.active) game.toggleNight(); else menuNight = menuNight ? 0 : 1; }); input.on('KeyR', () => game.reset());
 input.on('KeyM', () => { music.toggle(!music.on); toast(music.on ? `♪ ${music.name}` : '♪ ✕', 1600); if (settingsOpen) draw(); });
 input.on('Escape', () => { if (settingsOpen) settingsOpen = false; else if (screen === 'race') paused = !paused; draw(); });
 
@@ -172,6 +173,7 @@ let last = performance.now();
 function loop(now) {
   requestAnimationFrame(loop); const dt = Math.min(0.1, Math.max(0.0005, (now - last) / 1000)); last = now;
   if (game.active) { shown.visible = false; game.frame(dt, now); } else menu(dt, now);
+  { const b = input.touchEl && game.active && $('[data-do=seat]', ui); if (b) b.hidden = !(game.cabin && game.cabin.on && game.trip.mode === 'car'); }
   if (now - (loop.at || 0) > 300) { loop.at = now; const k = game.active ? 1 : A.stream.share, s = k < 0.995 ? `${t('comes')} ${Math.round(k * 100)}%` : ''; if (s !== pill) { pill = s; const e = $('#pill'); e.textContent = s; e.hidden = !s; } }
   fx.update(dt, innerHeight * view.renderer.getPixelRatio(), view.night); view.render(dt, now);
 }

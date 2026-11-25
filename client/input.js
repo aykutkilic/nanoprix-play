@@ -30,7 +30,12 @@ export class Input {
     peds.addEventListener('pointerdown', (e) => { const b = e.target.closest('b'); if (!b) return; e.preventDefault(); peds.setPointerCapture(e.pointerId); on.set(e.pointerId, { k: b.dataset.k, gas: b.dataset.k === 'gas' }); sum(); });
     peds.addEventListener('pointermove', (e) => { const f = on.get(e.pointerId); if (!f) return; const k = over(e); if (!k || k === f.k) return; f.k = k; if (k === 'gas') f.gas = true; sum(); });
     const up = (e) => { if (on.delete(e.pointerId)) sum(); }; for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) peds.addEventListener(n, up);
-    this.letGo = () => { id = null; steer(0); on.clear(); sum(); rest(); }; addEventListener('blur', this.letGo); document.addEventListener('visibilitychange', this.letGo);
+    // the view over the controls: a tap is the horn, held it is a look back (a finger that moves looks about: cabin.js)
+    let eye = null; const unsee = () => { if (eye) clearTimeout(eye.tm); eye = null; q.back = false; };
+    addEventListener('pointerdown', (e) => { if (eye || w.hidden || !/^(race|car)$/.test(w.dataset.mode) || !e.target.closest?.('#gl') || e.clientY > innerHeight * 0.6) return; eye = { id: e.pointerId, x: e.clientX, y: e.clientY, tm: setTimeout(() => { q.back = true; }, 280) }; });
+    addEventListener('pointermove', (e) => { if (eye && e.pointerId === eye.id && !q.back && Math.hypot(e.clientX - eye.x, e.clientY - eye.y) > 14) unsee(); });
+    addEventListener('pointerup', (e) => { if (!eye || e.pointerId !== eye.id) return; if (!q.back) { q.horn = true; clearTimeout(this.ht); this.ht = setTimeout(() => { q.horn = false; }, 240); } unsee(); }); addEventListener('pointercancel', (e) => { if (eye && e.pointerId === eye.id) unsee(); });
+    this.letGo = () => { id = null; steer(0); on.clear(); sum(); rest(); unsee(); q.horn = false; }; addEventListener('blur', this.letGo); document.addEventListener('visibilitychange', this.letGo);
   }
   showTouch(on) { if (this.touchEl && this.touchEl.hidden === on) { this.touchEl.hidden = !on; this.letGo(); } }
   // what one is doing: race | car (a cruise) | walk | hall (a station's) | ride | watch; alone, time may be let run
@@ -41,7 +46,7 @@ export class Input {
     let s = (has('ArrowRight', 'KeyD') ? 1 : 0) - (has('ArrowLeft', 'KeyA') ? 1 : 0), g = has('ArrowUp', 'KeyW') ? 1 : 0, b = has('ArrowDown', 'KeyS') ? 1 : 0, d = has('Space'), t = has('ShiftLeft', 'ShiftRight'), h = has('KeyH'), back = has('KeyB');
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
     for (const p of pads) { const a = p.axes[0] || 0; if (Math.abs(a) > 0.12) s = Math.sign(a) * ((Math.abs(a) - 0.12) / 0.88) ** 1.4; const B = (i) => (p.buttons[i] ? p.buttons[i].value : 0); g = Math.max(g, B(7), B(0)); b = Math.max(b, B(6), B(1)); d = d || B(5) > 0.5 || B(2) > 0.5; t = t || B(4) > 0.5; h = h || B(3) > 0.5; if (B(10) > 0.5 && !this._fo && this.handlers.KeyE) this.handlers.KeyE(); this._fo = B(10) > 0.5; if (B(8) > 0.5 && !this._se && this.handlers.KeyG) this.handlers.KeyG(); this._se = B(8) > 0.5; if (B(9) > 0.5 && !this._st && this.handlers.Escape) this.handlers.Escape(); this._st = B(9) > 0.5; }
-    if (this.touchEl) { const q = this.touch; if (Math.abs(q.steer) > 0.02) s = q.steer; g = Math.max(g, q.gas); b = Math.max(b, q.brake); d = d || q.drift; t = t || q.turbo; }
+    if (this.touchEl) { const q = this.touch; if (Math.abs(q.steer) > 0.02) s = q.steer; g = Math.max(g, q.gas); b = Math.max(b, q.brake); d = d || q.drift; t = t || q.turbo; h = h || !!q.horn; back = back || !!q.back; }
     o.steer = s; o.gas = g; o.brake = b; o.drift = d; o.turbo = t; o.horn = h; o.back = back; return o;
   }
 }

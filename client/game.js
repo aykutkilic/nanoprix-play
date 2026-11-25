@@ -21,7 +21,7 @@ import { CourseView, CityView } from './courseview.js';
 import { Cruiser, cityTraffic } from '../shared/cruise.js';
 import { Trip } from './trip.js';
 import { makePerson } from './person.js';
-import { t } from './i18n.js';
+import { t, touch } from './i18n.js';
 import { esc } from './hud.js';
 const DELAY = 0.11, wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 export class Game {
@@ -83,7 +83,7 @@ export class Game {
   }
   frame(dt, now) {
     if (!this.active) return;
-    const T = (this.t = this.raceTime()), me = this.me, V = this.view, fly = this.fly && this.fly.on ? this.fly.frame(dt) : null, inp = this.input.read(); this.input.context(this.free ? this.trip.mode : 'race', this.auto1);
+    const T = (this.t = this.raceTime()), me = this.me, V = this.view, fly = this.fly && this.fly.on ? this.fly.frame(dt) : null, inp = this.input.read(); this.input.context(this.watching ? 'watch' : !this.free ? 'race' : this.trip.hall && this.trip.mode === 'walk' ? 'hall' : this.trip.mode, this.auto1, this.trip.alone);
     // the count
     if (!this.free && !this.watching) { const n = Math.ceil(-T); if (n !== this.count) { if (n >= 1 && n <= 3) { this.hud.flash(String(n), 900); this.audio.beep(false); } else if (n === 0 && this.count === 1) { this.hud.flash(t('go'), 900); this.audio.beep(true); } this.count = n; } }
     // others, as shown and (for touching) as they are now
@@ -210,7 +210,7 @@ export class Game {
     const turn = this.free && this.auto1 && this.pilot.turn && this.pilot.left < 60 ? this.pilot.turn : null, sub = this.free ? (this.auto1 ? `${t('auto1')} · ${this.pilot.red ? '🔴' : this.pilot.obey ? t('atLimit') : `${Math.round(this.pilot.speed * KMH)} km/h`}` : '') : '', way = turn ? `${turn.uturn ? '↩' : Math.abs(turn.a) < 0.5 ? '↑' : turn.a > 0 ? '↱' : '↰'} ${esc(turn.r.name)} · ` : '';
     if (this.free && !this.found) this.discover({ id: '', name: '' , skip: true });
     let limit = 0; if (q && me && !fly && !this.trip.away && this.net.streets) { const a = q.i * 3, dir = Math.sin(me.yaw) * (q.road.p[a + 3] - q.road.p[a]) + Math.cos(me.yaw) * (q.road.p[a + 4] - q.road.p[a + 1]) >= 0 ? 1 : -1; limit = this.net.streets.limit(q.road, q.road.s[q.i], dir); }
-    const me0 = this.mine ? this.myId : this.watchId ?? this.leaderId(); if (this.watching && !this.ferryNote) { const c = this.cars.get(me0); this.watchNote = c ? `👁 ${esc(c.name)} · ← →` : ''; } if (this.full && now - (this.fullAt || 0) > 500) { this.fullAt = now; this.hud.set('full', `<h3>${esc(this.course.def.name.tr)} <small>${t('lap')} ${Math.min(this.settings.laps, (me ? Math.max(0, me.lap) : 0) + 1)}/${this.settings.laps}</small></h3>${board(this.stats, me0)}${gapChart(this.stats, me0, { w: 760, h: 230 })}`); }
+    const me0 = this.mine ? this.myId : this.watchId ?? this.leaderId(); if (this.watching && !this.ferryNote) { const c = this.cars.get(me0); this.watchNote = c ? `👁 ${esc(c.name)} · ${touch ? '‹ ›' : '← →'}` : ''; } if (this.full && now - (this.fullAt || 0) > 500) { this.fullAt = now; this.hud.set('full', `<h3>${esc(this.course.def.name.tr)} <small>${t('lap')} ${Math.min(this.settings.laps, (me ? Math.max(0, me.lap) : 0) + 1)}/${this.settings.laps}</small></h3>${board(this.stats, me0)}${gapChart(this.stats, me0, { w: 760, h: 230 })}`); }
     this.hud.draw({ tower: this.stats ? tower(this.stats, me0, this.hud.mode) : '', mode: this.stats ? t(this.hud.mode === 'top' ? 'topSpeed' : this.hud.mode === 'last' ? 'lastLap' : this.hud.mode) : '', sec: this.stats && (me || this.cars.has(me0)) && this.stats.cars.has(me0) ? sectors(this.stats, me0) : '', pedals: me && !fly && !this.trip.away ? [this.ctl ? this.ctl.gas : 0, this.ctl ? this.ctl.brake : 0] : null, limit, sub, free: this.free, pos: this.free || !me ? 0 : my + 1, n: list.length, lap: me && !this.free ? me.lap : 0, laps: this.free ? 0 : this.settings.laps, time: this.finished || (this.t * 1000 - (this.free ? 0 : 0)), best: this.best, list: this.free ? [] : list.slice(0, 8).map((o) => ({ name: o.c.name, color: o.c.color, me: o.c.mine, gap: me && !o.c.done && !this.finished ? o.c.prog - myP : undefined })), speed: fly ? focus.speed : me && !this.trip.away ? me.speed : Math.hypot(focus.vx, focus.vz), turbo: me ? me.turbo : 0, boosting: me && me.boosting, road: q && !this.trip.deep ? esc(q.road.name) : '', near: fly ? `✈ ${Math.round(focus.y * 10)} m${near ? ` · ${esc(near)}` : ''}${this.fly.locked ? '' : ` · ${t('flyClick')}`}` : this.trip.note || this.ferryNote || (this.watching && this.watchNote) || way + esc(near), cars: list.filter((o) => fly || !o.c.mine).map((o) => ({ x: o.c.st.x, z: o.c.st.z, color: o.c.color })), me: focus, yaw: focus.yaw, wrong: this.wrongT > 0.7, zoom: 1.15 });
   }
 }

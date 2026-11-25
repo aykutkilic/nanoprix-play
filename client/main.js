@@ -97,7 +97,7 @@ const seg = (id, opts, v) => `<div class="row seg" data-seg="${id}">${opts.map((
 let settingsOpen = false, paused = false, drawn = '';
 const nightBtn = () => `<button data-do="night">${view.night > 0.5 ? '☀️' : '🌙'}</button>`, keysHtml = () => (input.touchEl ? '' : `<p class="desc">${t('controls')}</p>`);
 function draw() {
-  const menu = screen !== 'race' || paused || settingsOpen, at = `${screen}${settingsOpen}${paused}`, top = drawn === at ? $('.panel', ui)?.scrollTop : 0; drawn = at; document.body.classList.toggle('driving', screen === 'race'); input.showTouch(!menu && !!game.me); paint(); if (top) { const p = $('.panel', ui); if (p) p.scrollTop = top; }
+  const menu = screen !== 'race' || paused || settingsOpen, at = `${screen}${settingsOpen}${paused}`, top = drawn === at ? $('.panel', ui)?.scrollTop : 0; drawn = at; document.body.classList.toggle('driving', screen === 'race'); input.showTouch(!menu); paint(); if (top) { const p = $('.panel', ui); if (p) p.scrollTop = top; }
 }
 function paint() {
   const race = screen === 'race', corner = input.touchEl ? (settingsOpen || (race && paused) ? '' : `<div class="corner">${race ? `${game.free && game.mine ? '<button data-do="find">🔎</button>' : ''}<button data-do="cam">🎥</button><button data-do="menu">☰</button>` : `${nightBtn()}<button data-do="settings">⚙</button>`}</div>`) : `<div class="corner">${screen === 'race' && game.free && game.mine ? '<button data-do="find">🔎</button>' : ''}<button data-do="cam">🎥</button>${nightBtn()}<button data-do="settings">⚙</button></div>`;

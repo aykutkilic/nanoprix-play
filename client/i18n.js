@@ -14,7 +14,16 @@ const T = {
   openOnline: ['Arkadaşlara aç', 'Open to friends'], offline: ['Çevrimdışı', 'Offline'], failed: ['Olmadı', 'Failed'],
 };
 let L = 0; try { const s = localStorage.getItem('nanoprix.lang'); L = s ? (s === 'en' ? 1 : 0) : /^tr/i.test(navigator.language) ? 0 : 1; } catch { /* */ }
-export const t = (k) => (T[k] ? T[k][L] : k);
+// on a touch screen: what the keys are there (input.js), and what is said of them
+export const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+const ICON = { E: '🚶', R: '🚗', Q: '⤴', Z: '⏩' };
+export const key = (k) => (touch ? `${ICON[k]} ` : `${k} · `);
+const TOUCH = {
+  cruiseText: ['Yarış yok: bütün şehir açık. A ile otomatik sürüş – yolu kendi izler, ped ile kavşakta yön seç, ▲▼ ile hız.', 'No race: the whole city is open. A for cruise control – it keeps to the road; the pad chooses the way at a junction, ▲▼ the speed.'],
+  walkRest: ['adres # m ötede – 🚶 ile in', 'the address is # m away – 🚶 to get out'], seatKeys: ['↷: yer · ped, ▲▼ ya da sürükle: bak · 🎥: kamera', '↷: seat · pad, ▲▼ or drag: look · 🎥: camera'],
+  onFoot: ['Yayasın · 🚶 bin/in · 🚗 arabanı getir', 'On foot · 🚶 in and out · 🚗 brings your car'], stopAsked: ['DURACAK · 🚶 vazgeç', 'STOPPING · 🚶 to stay on'],
+};
+export const t = (k) => ((touch && TOUCH[k]) || T[k] || [k, k])[L];
 export const lang = () => (L ? 'en' : 'tr');
 export const setLang = (l) => { L = l === 'en' ? 1 : 0; try { localStorage.setItem('nanoprix.lang', lang()); } catch { /* */ } document.documentElement.lang = lang(); };
 const ERR = { 'Room not found – is the host still online?': 'Oda bulunamadı – sahibi hâlâ açık mı?', 'Room not found': 'Oda bulunamadı', 'Room is full': 'Oda dolu', 'The host closed the room': 'Oda sahibi odayı kapattı', 'The host sent you out': 'Oda sahibi seni çıkardı', 'Lost connection to the host': 'Oda sahibiyle bağlantı koptu', 'Could not reach the host (a strict firewall can block peer-to-peer).': 'Oda sahibine ulaşılamadı (katı bir güvenlik duvarı engelliyor olabilir).', 'The host did not answer': 'Oda sahibi yanıt vermedi' };

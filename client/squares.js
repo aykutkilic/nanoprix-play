@@ -84,6 +84,8 @@ function sights() {
 }
 export const iskele = () => sights().iskele();
 // is this in a street one walks in?
+// is this on a cobbled street that cars drive on?
+export function inCobbles(A) { const list = (A.squares && A.squares.cobbles) || []; return (x, z) => list.some((r) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) if (r[i][1] > z !== r[j][1] > z && x < ((r[j][0] - r[i][0]) * (z - r[i][1])) / (r[j][1] - r[i][1]) + r[i][0]) c = !c; return c; }); }
 export function inSetts(A) {
   const list = A.squares ? A.squares.areas.filter((a) => a.kind === 1).map(({ rings: [r] }) => ({ r, x0: Math.min(...r.map((p) => p[0])), x1: Math.max(...r.map((p) => p[0])), z0: Math.min(...r.map((p) => p[1])), z1: Math.max(...r.map((p) => p[1])) })) : [];
   return (x, z) => list.some(({ r, x0, x1, z0, z1 }) => { if (x < x0 || x > x1 || z < z0 || z > z1) return false; let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) if (r[i][1] > z !== r[j][1] > z && x < ((r[j][0] - r[i][0]) * (z - r[i][1])) / (r[j][1] - r[i][1]) + r[i][0]) c = !c; return c; });

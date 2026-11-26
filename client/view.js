@@ -95,6 +95,7 @@ export class View {
   // follow a car; dt in s
   follow(c, dt, back = false) {
     if (this.cabin && CAMS[this.cam.mode] === 'inside') { this.within(c, dt, back); return; }
+    if (this.walkView && this.rig && this.rig.kind === 'walk' && /chase|near|inside/.test(CAMS[this.cam.mode])) { this.walkCam(c, dt); return; }
     const rig = this.rig, deep = !!rig && (rig.kind === 'tube' || rig.kind === 'hall' || rig.kind === 'pass'); if (CAMS[this.cam.mode] === 'iso' && !deep) { this.close = false; this.leaves(null); this.isometric(c, dt); return; }
     this.usePersp(rig && rig.kind === 'walk' && rig.solid && /chase|near|inside/.test(CAMS[this.cam.mode]) ? 0.14 : deep && rig.kind !== 'tube' ? 0.1 : 0.35); this.look = null;
     const K = this.cam, m = deep ? 'chase' : CAMS[K.mode] === 'inside' ? 'near' : CAMS[K.mode], v = Math.hypot(c.vx, c.vz), dir = v > 1.2 ? Math.atan2(c.vx, c.vz) : c.yaw;
@@ -118,6 +119,15 @@ export class View {
     K.fov += (S[3] + (c.boosting ? 7 : 0) - K.fov) * Math.min(1, dt * 4); if (Math.abs(this.camera.fov - K.fov) > 0.02) { this.camera.fov = K.fov; this.camera.updateProjectionMatrix(); }
     this.shadowAt(c.x + sx * 12, c.y, c.z + sz * 12, m === 'top' || m === 'diorama' ? 46 : 38);
     const dist = this.camera.position.distanceTo(tmpV.set(c.x, c.y, c.z)); this.post.focus = dist; this.post.tilt = this.tiltOn ? (m === 'diorama' || m === 'top' ? 1 : 0.5) : 0;
+  }
+  // on foot, as in Minecraft: from the eyes (inside), or from behind and a little above (chase, near), looking where the mouse looks
+  walkCam(c, dt) {
+    const K = this.cam, rig = this.rig, first = CAMS[K.mode] === 'inside', p = c.pitch ?? 0, cp = Math.cos(p), dx = Math.sin(c.yaw) * cp, dy = Math.sin(p), dz = Math.cos(c.yaw) * cp, eyeY = c.y + 0.37;
+    this.usePersp(first ? 0.05 : 0.12); this.look = null; let px = c.x, py = eyeY, pz = c.z;
+    if (!first) { const back = CAMS[K.mode] === 'chase' ? 1.7 : 1.05; px = c.x - dx * back; py = eyeY - dy * back + 0.12; pz = c.z - dz * back; if (rig.solid) { const t = rig.solid.sight(c.x, eyeY, c.z, px, py, pz); px = c.x + (px - c.x) * t; py = eyeY + (py - eyeY) * t; pz = c.z + (pz - c.z) * t; } if (this.world) py = Math.max(py, this.world.height(px, pz) + 0.15); }
+    K.pos.set(px, py, pz); K.yaw = c.yaw; K.init = true; this.camera.position.copy(K.pos); K.look.set(px + dx, py + dy, pz + dz); this.camera.lookAt(K.look); this.close = first || Math.hypot(px - c.x, pz - c.z) < 0.3; this.leaves(c, c.y + 0.28);
+    const fov = first ? 74 : 66; K.fov = fov; if (Math.abs(this.camera.fov - fov) > 0.02) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    this.shadowAt(c.x + dx * 10, c.y, c.z + dz * 10, 34); this.post.focus = first ? 6 : Math.hypot(px - c.x, py - eyeY, pz - c.z); this.post.tilt = 0;
   }
   leaves(c, y) { const u = this.world && this.world.leafCut; if (u) { if (c) u.value.set(c.x, y, c.z, 1); else u.value.w = 0; } }
   // on foot: the side to look from where there is room between houses and trees, straight behind if there is

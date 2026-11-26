@@ -6,7 +6,7 @@ import { noiseTexture } from './realism.js';
 import { surf, weathered, cutAway, NONE } from './weather.js';
 import { buildTube } from './tube.js';
 import { pack, Batch, merge, normals } from './gpu.js';
-import { inSetts } from './squares.js';
+import { inSetts, inCobbles } from './squares.js';
 
 // how far above its line a road is drawn (so that none flickers through another)
 export const lift = (r) => (r.spur ? -0.003 : 0.004) + RANK[r.style] * 0.007 + (r.index % 5) * 0.0012;
@@ -92,12 +92,13 @@ export function buildRoads(W) {
   const COLS = (r) => [r.style === 'motorway' ? RAIL : r.style === 'shore' ? SHORE : CONC, r.style === 'motorway' ? RAIL : CONC, CONC, PAVE, SIDE, SIDE];
   const batch = new Batch(), finish = (K) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(K.pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(K.col, 3)); g.setIndex(K.idx); normals(g); batch.add(pack(g), kerb, 1.35); };
   W.kerbStone = kerb; kerb.side = THREE.DoubleSide; weathered(kerb, { snow: 0.9, wet: 0.35, shine: 0.4 });
-  const setts = inSetts(W.A); const rims = (W.rims = []), rounds = new Map(); // (where there is a kerb, for who walks)
+  const setts = inSetts(W.A), cobbled = inCobbles(W.A); const rims = (W.rims = []), rounds = new Map(); // (where there is a kerb, for who walks)
   for (const r of net.roads) {
     const up = lift(r), LAT = [-1, -0.4, 0.4, 1], PIECE = 48, A = net.hubs.get(r.a), B = net.hubs.get(r.b);
     const frame = (i) => { const a = Math.max(0, i - 1) * 3, b = Math.min(r.n - 1, i + 1) * 3, dx = r.p[b] - r.p[a], dz = r.p[b + 1] - r.p[a + 1], l = Math.hypot(dx, dz) || 1; return [r.p[i * 3], r.p[i * 3 + 1], r.p[i * 3 + 2], dx / l, dz / l]; };
     const F = Array.from({ length: r.n }, (_, i) => frame(i));
-    const S = r.spur ? F.map(([x, z]) => setts(x, z)) : null;
+    const S = r.spur ? F.map(([x, z]) => setts(x, z)) : r.id === 'galata' ? F.map(([x, z], i) => !!r.bridge[i] && W.coast(x, z) < 0.4) : null; // (the Galata bridge's own pavements: galata.js)
+    const C = F.map(([x, z]) => cobbled(x, z)); // (setts, but its kerbs as they are)
     const edges = [1, -1].map((sd) => F.map(([x, z, y, dx, dz], i) => { const ex = x - dz * sd * r.hw, ez = z + dx * sd * r.hw, yy = hAt(ex, ez, y); return { p: [ex, ez], y: yy, nx: -dz * sd, nz: dx * sd, free: !(S && S[i]) && !(r.tunnel && (r.tunnel[i] || 0) === 2) && !covered(ex, ez, y, r), bridge: (r.bridge[i] === 1 && height(ex, ez) < y - 0.5) || above(ex, ez, yy, r), tight: r.style !== 'motorway' && crowded(ex, ez, -dz * sd, dx * sd, yy, r, [0.3, 0.6]) }; }));
     rims[r.index] = edges.map((E) => ({ f: Uint8Array.from(E, (e) => (e.free ? (e.bridge ? 2 : 1) + (e.tight ? 4 : 0) : 0)), y: Float32Array.from(E, (e) => e.y + up) }));
     for (let i0 = 0, i1 = 0; i0 < r.n - 1; i0 = i1) {
@@ -105,7 +106,7 @@ export function buildRoads(W) {
       const pos = [], road = [], hub = [], idx = [], K = makeKerb();
       for (let i = i0; i <= i1; i++) {
         const [x, z, y, dx, dz] = F[i], dh = A ? Math.min(Math.hypot(x - A.x, z - A.z) - (A.r || 3), Math.hypot(x - B.x, z - B.z) - (B.r || 3)) : Math.min(r.s[i] - 1.6, r.len - r.s[i]);
-        for (const u of LAT) { const px = x - dz * u * r.hw, pz = z + dx * u * r.hw; pos.push(px, hAt(px, pz, y) + up, pz); road.push(u * r.hw, r.s[i], r.hw, S && S[i] ? -1 : RANK[r.style] + (r.bus ? 1 : 0)); hub.push(dh); }
+        for (const u of LAT) { const px = x - dz * u * r.hw, pz = z + dx * u * r.hw; pos.push(px, hAt(px, pz, y) + up, pz); road.push(u * r.hw, r.s[i], r.hw, (S && S[i] && r.spur) || C[i] ? -1 : RANK[r.style] + (r.bus ? 1 : 0)); hub.push(dh); }
         if (i < i1) { const q = (i - i0) * 4; for (let k = 0; k < 3; k++) idx.push(q + k, q + k + 1, q + k + 4, q + k + 1, q + k + 5, q + k + 4); }
       }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aRoad', new THREE.Float32BufferAttribute(road, 4)); g.setAttribute('aHub', new THREE.Float32BufferAttribute(hub, 1)); g.setIndex(idx); normals(g);
@@ -116,7 +117,7 @@ export function buildRoads(W) {
     }
     // lamps, by turns on either side (the light pools of the asphalt's shader)
     for (let s = 5, k = 0; s < r.len - 3; s += r.spur ? 20 : 10, k++) { const i = Math.min(r.n - 2, Math.round((s / r.len) * (r.n - 1))), E = edges[k % 2 ? 0 : 1][i]; if (E.free && !E.tight && !(r.tunnel && r.tunnel[i]) && !(net.transit && net.transit.over(E.p[0], E.p[1], E.y - 0.4, E.y + 1.5))) lamps.push([E.p[0] + E.nx * 0.3, E.y, E.p[1] + E.nz * 0.3, Math.atan2(-E.nx, -E.nz)]); }
-    if (r.id !== 'bogaz' && r.id !== 'fsm' && r.id !== 'yss') for (let i = 4; i < r.n - 4; i += 5) if (r.bridge[i]) { const [x, z, y, dx, dz] = F[i], gy = Math.max(-1.4, height(x, z)); if (y - gy > 0.9) { let under = false; net.around(x, z, (o, j, t, d, h) => { if (o !== r && d < o.hw + 0.4 && h < y - 0.6) under = true; }); if (!under && !(net.transit && net.transit.over(x, z, gy - 2, y - 0.3, 0.5))) piers.push([x, gy - 0.2, z, r.hw, y - 0.3 - gy + 0.2, Math.atan2(dx, dz)]); } }
+    if (r.id !== 'bogaz' && r.id !== 'fsm' && r.id !== 'yss' && r.id !== 'galata') for (let i = 4; i < r.n - 4; i += 5) if (r.bridge[i]) { const [x, z, y, dx, dz] = F[i], gy = Math.max(-1.4, height(x, z)); if (y - gy > 0.9) { let under = false; net.around(x, z, (o, j, t, d, h) => { if (o !== r && d < o.hw + 0.4 && h < y - 0.6) under = true; }); if (!under && !(net.transit && net.transit.over(x, z, gy - 2, y - 0.3, 0.5))) piers.push([x, gy - 0.2, z, r.hw, y - 0.3 - gy + 0.2, Math.atan2(dx, dz)]); } }
   }
   for (const r of net.roads) if (r.tunnel) buildTube(W, r, lift);
   // ------------------------------------------------------------ junctions

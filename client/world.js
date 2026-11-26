@@ -12,6 +12,8 @@ import { buildBuildings } from './buildings.js';
 import { buildLife } from './life.js';
 import { buildShips } from './ships.js';
 import { buildSquares } from './squares.js';
+import { buildGalata } from './galata.js';
+import { buildWalls } from './walls.js';
 import { pack, Keeper, Still, merge } from './gpu.js';
 import { buildTransit } from './transit.js';
 import { Transit } from '../shared/transit.js';
@@ -25,7 +27,7 @@ export const CHUNK = 64; // grid cells across a piece of ground
 export async function buildWorld(scene, A, net, onStage = () => {}) {
   const root = new THREE.Group(), still = new Still(); scene.add(root); root.add(still);
   const g = A.map.grid, M0 = A.map.map, { height, coast } = A.ground;
-  const night = { value: 0 }, time = { value: 0 }, W = { keeper: new Keeper(), still, mouths: { value: net.roads.filter((r) => r.tunnel).flatMap(() => [0, 1]).map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, glow: [], spots: [], updates: [], A };
+  const night = { value: 0 }, time = { value: 0 }, W = { keeper: new Keeper(), still, mouths: { value: net.roads.filter((r) => r.tunnel).flatMap(() => [0, 1]).map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, walkOn: [], glow: [], spots: [], updates: [], A };
   W.transit = net.transit = new Transit({ ...A.transit, islands: A.roads.islands }, A.lines);
   W.lit = (m, color, k) => { m.emissive = new THREE.Color(color); m.emissiveIntensity = 0; W.glow.push([m, k]); return m; };
   W.mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, ...o });
@@ -128,17 +130,17 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   W.light = light;
   const lampTex = new THREE.DataTexture(ld, LD, LD, THREE.RedFormat); lampTex.magFilter = lampTex.minFilter = THREE.LinearFilter; lampTex.unpackAlignment = 1;
   W.lampTex = lampTex;
-  const wake = (W.wake = { value: Array.from({ length: 8 }, () => new THREE.Vector4(0, 0, 0, 1e4)) }); // boats: x, z, heading, length
+  const wake = (W.wake = { value: Array.from({ length: 12 }, () => new THREE.Vector4(0, 0, 0, 1e4)) }); W.wakeV = { value: new Array(12).fill(0) }; // boats: x, z, heading, length; and how fast, 0 … 1
   const sea = new THREE.MeshPhysicalMaterial({ color: '#0d3f55', roughness: 0.09, metalness: 0, ior: 1.33, specularIntensity: 1, envMapIntensity: 1.15 });
   sea.onBeforeCompile = (s) => {
-    Object.assign(s.uniforms, { uNoise: { value: noiseTexture() }, uShore: { value: shoreTex }, uArea: { value: area }, uTime: time, uNight: night, uMoon: { value: MOON_DIR }, uLamps: { value: lampTex }, uWake: wake, uSwell: surf.swell, uRain: surf.rain }); cutAway(s);
+    Object.assign(s.uniforms, { uNoise: { value: noiseTexture() }, uShore: { value: shoreTex }, uArea: { value: area }, uTime: time, uNight: night, uMoon: { value: MOON_DIR }, uLamps: { value: lampTex }, uWake: wake, uWakeV: W.wakeV, uSwell: surf.swell, uRain: surf.rain }); cutAway(s);
     s.uniforms.uEdge = { value: new THREE.Vector4(g.x0, g.z0, g.x0 + (g.w - 1) * g.step, g.z0 + (g.h - 1) * g.step) };
     s.vertexShader = s.vertexShader.replace('#include <common>', `#include <common>
       varying vec3 vW; uniform sampler2D uShore; uniform vec4 uArea, uEdge; uniform float uTime, uSwell; ${SWELL_GLSL}`).replace('#include <begin_vertex>', `#include <begin_vertex>
       { vec4 w4 = modelMatrix * vec4(position, 1.0); w4.xz = clamp(w4.xz, uEdge.xy, uEdge.zw); float sh = (texture2D(uShore, (w4.xz - uArea.xy) / uArea.zw).r - 0.5) * 24.0, shelter = smoothstep(-0.9, -7.9, sh); w4.y += swell(w4.xz, uTime).x * uSwell * shelter; vW = w4.xyz; transformed = w4.xyz - modelMatrix[3].xyz; }`);
     s.fragmentShader = s.fragmentShader.replace('#include <common>', `#include <common>
         uniform float uSwell, uRain; ${SWELL_GLSL}
-        uniform sampler2D uNoise, uShore, uLamps; uniform vec4 uArea; uniform vec4 uWake[8]; uniform float uTime, uNight; uniform vec3 uMoon; varying vec3 vW;
+        uniform sampler2D uNoise, uShore, uLamps; uniform vec4 uArea; uniform vec4 uWake[12]; uniform float uWakeV[12]; uniform float uTime, uNight; uniform vec3 uMoon; varying vec3 vW;
         float wave(vec2 p) {
           return texture2D(uNoise, p * 0.030 + vec2(uTime * 0.0060, uTime * 0.0042)).r * 1.6 + texture2D(uNoise, p * 0.085 - vec2(uTime * 0.011, -uTime * 0.007)).g * 0.62
             + texture2D(uNoise, p * 0.26 + vec2(-uTime * 0.013, uTime * 0.018)).g * 0.17;
@@ -154,13 +156,23 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
         // in a sea: white on the crests, streaks down the wind
         float shelter = smoothstep(-0.9, -7.9, shore / 0.28); vec3 sw = swell(vW.xz, uTime) * uSwell * shelter;
         if (uSwell > 0.1) { float crest = smoothstep(0.14, 0.42, sw.x) * smoothstep(0.35, 0.75, texture2D(uNoise, vW.xz * 0.13 + vec2(-uTime * 0.03, uTime * 0.022)).g + sw.x * 0.45); vec2 q = vec2(dot(vW.xz, vec2(0.78, -0.62)), dot(vW.xz, vec2(0.62, 0.78))); float streak = smoothstep(0.62, 0.86, texture2D(uNoise, q * vec2(0.02, 0.22) - vec2(uTime * 0.02, 0.0)).g); foam += (crest * 0.95 + streak * 0.35) * smoothstep(0.1, 0.8, uSwell); wc = mix(wc, vec3(0.075, 0.135, 0.145) * (0.8 + sw.x * 0.8), smoothstep(0.1, 1.0, uSwell) * 0.75); foam += smoothstep(-0.9, -0.1, shore) * smoothstep(0.35, 0.9, uSwell) * smoothstep(0.3, 0.8, texture2D(uNoise, vW.xz * 0.3 + uTime * 0.05).g) * 0.8; }
-        // the boats' wakes
-        for (int k = 0; k < 8; k++) {
-          vec2 d = vW.xz - uWake[k].xy; if (dot(d, d) > 3600.0) continue;
-          vec2 f = vec2(sin(uWake[k].z), cos(uWake[k].z)); float a = -dot(d, f), b = dot(d, vec2(f.y, -f.x)), L = uWake[k].w;
-          if (a > -L * 0.5) { float sp = 0.25 + max(a + L * 0.3, 0.0) * 0.30, fade = exp(-max(a, 0.0) * 0.075);
-            float arm = exp(-pow((abs(b) - sp) * 1.6, 2.0)) + 0.8 * exp(-b * b * 1.2) * smoothstep(L * 0.3, L * 0.6, a);
-            foam += arm * fade * (0.35 + 0.65 * texture2D(uNoise, vW.xz * 0.35 + uTime * 0.03).g) * 0.9; }
+        // the boats' wakes: white water churned up astern, breaking up as it spreads; the two arms of the V (at 19.5°, as for any
+        // ship); the bow wave and the wash along her sides. All of it as fast as she goes, and in bubbles and streaks, not paint
+        for (int k = 0; k < 12; k++) {
+          vec2 d = vW.xz - uWake[k].xy; float L = uWake[k].w, v = uWakeV[k]; if (v < 0.02 || dot(d, d) > L * L * 64.0) continue;
+          vec2 f = vec2(sin(uWake[k].z), cos(uWake[k].z)); float a = -dot(d, f), b = dot(d, vec2(f.y, -f.x)), ab = abs(b), t = a - L * 0.45, beam = L * 0.085;
+          vec2 q = vec2(a, b) * 0.9 + vec2(-uTime * 1.2, 0.0); float n1 = texture2D(uNoise, (q + uWake[k].xy) * 0.21).g, n2 = texture2D(uNoise, (q - uWake[k].xy) * 0.63).r, n3 = texture2D(uNoise, vW.xz * 1.7 + uTime * 0.05).b;
+          float w = 0.0;
+          if (t > 0.0) {
+            float wide = beam * 1.1 + t * 0.07, churn = exp(-pow(ab / wide, 2.0)) * exp(-t / (L * 1.6)); // (the screw's white water)
+            w += churn * smoothstep(0.25, 0.75, n1 * 0.55 + n2 * 0.45 + churn * 0.6) * 1.4;
+            float s = beam + t * 0.354, arm = exp(-pow((ab - s) / (0.12 + t * 0.012), 2.0)) * exp(-t / (L * 3.2)); // (the V)
+            w += arm * smoothstep(0.3, 0.7, n2 * 0.7 + n3 * 0.5) * 0.95;
+            w += 0.22 * exp(-pow(ab / (wide * 2.2), 2.0)) * exp(-t / (L * 2.6)) * smoothstep(0.35, 0.6, n3); // (the old wake, faint)
+          }
+          if (abs(a) < L * 0.52) { float side = exp(-pow((ab - beam - 0.04) / 0.09, 2.0)) * smoothstep(-L * 0.5, L * 0.3, a); w += side * smoothstep(0.3, 0.6, n2 + 0.2) * 0.8; } // (along her sides)
+          w += exp(-pow((a + L * 0.5) / 0.35, 2.0)) * exp(-pow(ab / (beam * 1.3), 2.0)) * (0.7 + 0.5 * n3); // (her bow)
+          foam += w * smoothstep(0.0, 0.6, v);
         }
         foam = min(foam, 1.0);
         diffuseColor.rgb = mix(wc, vec3(0.80, 0.85, 0.86), foam * 0.72);`)
@@ -221,7 +233,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   await onStage('city');
 
   buildRoads(W); await onStage('roads');
-  buildMarks(W); buildSquares(W); await onStage('landmarks');
+  buildMarks(W); buildSquares(W); buildGalata(W); buildWalls(W); await onStage('landmarks');
   buildLife(W); await onStage('life'); buildShips(W, A); buildTransit(W); await onStage('ships');
   buildSigns(W); buildSignals(W); await onStage('signs');
   lampTex.needsUpdate = true;

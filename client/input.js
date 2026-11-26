@@ -16,9 +16,9 @@ export class Input {
   buildTouch(el) {
     const w = document.createElement('div'); w.className = 'touch'; w.hidden = true; w.innerHTML = '<div class="acts"><b data-k="KeyE">🚶</b><b data-k="KeyG">A</b><b data-k="KeyR">↺</b><b data-k="KeyQ">⤴</b><b data-k="KeyZ">⏩</b><b data-k="ArrowLeft">‹</b><b data-k="ArrowRight">›</b></div><div class="pad"><i></i></div><div class="peds"><b data-k="drift">↷</b><b data-k="turbo">⚡</b><b data-k="brake">▼</b><b data-k="gas">▲</b></div>'; el.appendChild(w); this.touchEl = w; w.addEventListener('contextmenu', (e) => e.preventDefault()); w.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false }); /* (a finger lifted once a menu has come is not a tap on the menu) */
     const q = this.touch, pad = w.querySelector('.pad'), knob = pad.firstChild; let id = null, x0 = 0;
-    const steer = (v) => { q.steer = v; knob.style.transform = v ? `translateX(${v * 34}px)` : ''; };
+    const steer = (v) => { q.steer = v; knob.style.transform = v ? `translateX(${v * 42}px)` : ''; };
     pad.addEventListener('pointerdown', (e) => { if (id !== null) return; id = e.pointerId; x0 = e.clientX; pad.setPointerCapture(id); e.preventDefault(); });
-    pad.addEventListener('pointermove', (e) => { if (e.pointerId === id) steer(Math.max(-1, Math.min(1, (e.clientX - x0) / 46))); });
+    pad.addEventListener('pointermove', (e) => { if (e.pointerId === id) steer(Math.max(-1, Math.min(1, (e.clientX - x0) / 57))); });
     const off = (e) => { if (e.pointerId === id) { id = null; steer(0); } }; for (const n of ['pointerup', 'pointercancel', 'lostpointercapture']) pad.addEventListener(n, off);
     for (const b of w.querySelectorAll('.acts b')) b.addEventListener('pointerdown', (e) => { e.preventDefault(); const k = b.dataset.k, h = this.handlers[k]; if (h) h(e); if (k === 'KeyZ') { held = e.pointerId; this.keys.add(k); b.classList.add('on'); } });
     // (⏩ is held; wherever the finger is lifted, even when the button has gone)

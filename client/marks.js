@@ -1,5 +1,5 @@
 // The landmarks (the ist project's models, baked by tools/landmarks.mjs), the
-// suspension bridges, the Galata bridge, the Maçka cable car.
+// suspension bridges, the Maçka cable car (the Galata bridge: galata.js).
 import * as THREE from './vendor/three.module.min.js';
 
 import { readMarks } from './assets.js';
@@ -87,11 +87,6 @@ export function buildMarks(W) {
     const mid = centre(0.5); for (let k = 0; k <= 12; k++) { const c = centre(k / 12); W.light(c.x, c.z, 3, 0.5); } W.spot(mid.x, 3, mid.z, '#6a7cff', 40, 60);
   }
   W.updates.push((dt, now) => { if (night.value > 0) W.bridgeLights.forEach((m, k) => m.emissive.setHSL(((now / 24000) + (k % 3) * 0.08) % 1, 0.9, 0.5)); });
-  // ------------------------------------------------------------ the Galata bridge: its restaurants below and fishermen above
-  { const r = net.byId.get('galata'), m1 = lit(mat('#6d3a2c'), '#ff8a3a', 1.1), rodM = mat('#3a2a1a'), coats = ['#32425a', '#7a3b34', '#4d5b3c', '#c9a13a'].map((c) => mat(c));
-    for (let i = 2; i < r.n - 2; i++) { const a = i * 3, x = r.p[a], z = r.p[a + 1], y = r.p[a + 2]; if (W.coast(x, z) > -0.8) continue; const dx = r.p[a + 3] - x, dz = r.p[a + 4] - z, l = Math.hypot(dx, dz), yaw = Math.atan2(dx, dz);
-      for (const s of [-1, 1]) { const nx = (-dz / l) * s, nz = (dx / l) * s; if (Math.abs(i - r.n / 2) > 4) { const o = piece(new THREE.BoxGeometry(0.55, 0.28, 0.98), m1, x + nx * (r.hw - 0.1), y - 0.42, z + nz * (r.hw - 0.1), root); o.rotation.y = yaw; }
-        if ((i * 7 + s) % 3 === 0) { piece(new THREE.CapsuleGeometry(0.055, 0.16, 4, 8), coats[(i + (s > 0 ? 2 : 0)) % 4], x + nx * (r.hw + 0.42), y + 0.2, z + nz * (r.hw + 0.42), root); const rod = piece(new THREE.CylinderGeometry(0.008, 0.014, 1.4, 5), rodM, x + nx * (r.hw + 1.0), y + 0.6, z + nz * (r.hw + 1.0), root); rod.rotation.set(0, Math.atan2(nx, nz), 0); rod.rotateX(0.95); } } } }
   // ------------------------------------------------------------ the Maçka – Taşkışla cable car (OSM way 280627255)
   { const P = A.map.teleferik, ends = [P[0], P[P.length - 1]], tower = mat('#8f9aa2', { metalness: 0.5, roughness: 0.5 }), hall = lit(mat('#e9e2d2'), '#ffd28a', 0.5), red = mat('#b8322a', { roughness: 0.4 });
     const pts = P.map(([x, z], k) => { const e = k === 0 || k === P.length - 1; return V(x, height(x, z) + (e ? 1.0 : 2.7), z); }), yaw = Math.atan2(ends[1][0] - ends[0][0], ends[1][1] - ends[0][1]), side = V(Math.cos(yaw), 0, -Math.sin(yaw)).multiplyScalar(0.5);

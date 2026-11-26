@@ -14,6 +14,8 @@ import { buildShips } from './ships.js';
 import { buildSquares } from './squares.js';
 import { buildGalata } from './galata.js';
 import { buildWalls } from './walls.js';
+import { buildInfra } from './infra.js';
+import { buildGreen } from './green.js';
 import { pack, Keeper, Still, merge } from './gpu.js';
 import { buildTransit } from './transit.js';
 import { Transit } from '../shared/transit.js';
@@ -27,7 +29,7 @@ export const CHUNK = 64; // grid cells across a piece of ground
 export async function buildWorld(scene, A, net, onStage = () => {}) {
   const root = new THREE.Group(), still = new Still(); scene.add(root); root.add(still);
   const g = A.map.grid, M0 = A.map.map, { height, coast } = A.ground;
-  const night = { value: 0 }, time = { value: 0 }, W = { keeper: new Keeper(), still, mouths: { value: net.roads.filter((r) => r.tunnel).flatMap(() => [0, 1]).map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, walkOn: [], glow: [], spots: [], updates: [], A };
+  const night = { value: 0 }, time = { value: 0 }, W = { time, keeper: new Keeper(), still, mouths: { value: net.roads.filter((r) => r.tunnel).flatMap(() => [0, 1]).map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, walkOn: [], glow: [], spots: [], updates: [], A };
   W.transit = net.transit = new Transit({ ...A.transit, islands: A.roads.islands }, A.lines);
   W.lit = (m, color, k) => { m.emissive = new THREE.Color(color); m.emissiveIntensity = 0; W.glow.push([m, k]); return m; };
   W.mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, ...o });
@@ -61,6 +63,8 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
         float shore = (texture2D(uShore, auv).r - 0.5) * 24.0 + (n2.g - 0.5) * 0.7;
         c = mix(c, vec3(0.335, 0.32, 0.295) * (0.84 + n3.b * 0.32), smoothstep(1.5, 0.7, shore)); // (stone quays)
         c *= mix(0.45, 1.0, smoothstep(-0.10, 0.12, vW.y));
+        // a wood seen from above: crowns close together, dark and mottled, where the trees themselves are not drawn
+        { float wood = smoothstep(0.93, 0.995, park), crowns = smoothstep(0.35, 0.75, texture2D(uNoise, vW.xz * 0.42).r * 0.6 + texture2D(uNoise, vW.xz * 1.3).g * 0.4); vec3 canopy = mix(vec3(0.020, 0.048, 0.016), vec3(0.075, 0.118, 0.036), crowns) * (0.8 + n1.b * 0.4); c = mix(c, canopy, wood * 0.88); gBump += wood * crowns * 0.18; }
         diffuseColor.rgb = c;
         gBump = (n3.b * 0.05 + n3.g * 0.06) * (1.0 - 0.75 * smoothstep(0.02, 0.4, gUrban)) * smoothstep(0.7, 1.8, shore + park);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
@@ -233,7 +237,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   await onStage('city');
 
   buildRoads(W); await onStage('roads');
-  buildMarks(W); buildSquares(W); buildGalata(W); buildWalls(W); await onStage('landmarks');
+  buildMarks(W); buildSquares(W); buildGalata(W); buildWalls(W); buildInfra(W); buildGreen(W); await onStage('landmarks');
   buildLife(W); await onStage('life'); buildShips(W, A); buildTransit(W); await onStage('ships');
   buildSigns(W); buildSignals(W); await onStage('signs');
   lampTex.needsUpdate = true;

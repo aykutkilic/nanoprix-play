@@ -96,10 +96,14 @@ export function buildSquares(W) {
   const ground = (x, z) => { const a = (x - g.x0) / g.step, b = (z - g.z0) / g.step, i = Math.floor(a), j = Math.floor(b), p = a - i, q = b - j, k = j * g.w + i, f = A.H; return p + q <= 1 ? f[k] + (f[k + 1] - f[k]) * p + (f[k + g.w] - f[k]) * q : f[k + g.w + 1] + (f[k + g.w] - f[k + g.w + 1]) * (1 - p) + (f[k + 1] - f[k + g.w + 1]) * (1 - q); };
   const areas = D.areas.map((a) => { const xs = a.rings[0].map((p) => p[0]), zs = a.rings[0].map((p) => p[1]); return { a, x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) }; });
   // how high one stands on the paving at (x, z): null, there is none, or a landmark stands there
+  // the trams that run in the streets one walks in (T2, T3): their bed, and the paving's dip to it (as tools/squares.mjs lays it)
+  const beds = new Map(); for (const l of (W.transit && W.transit.lines) || []) if (l.kind === 'old') for (let i = 0; i + 1 < l.n; i++) { const a = [l.p[i * 3], l.p[i * 3 + 1], l.p[i * 3 + 2]], b = [l.p[i * 3 + 3], l.p[i * 3 + 4], l.p[i * 3 + 5]]; for (let gx = Math.floor((Math.min(a[0], b[0]) - 1) / 4); gx <= Math.floor((Math.max(a[0], b[0]) + 1) / 4); gx++) for (let gz = Math.floor((Math.min(a[1], b[1]) - 1) / 4); gz <= Math.floor((Math.max(a[1], b[1]) + 1) / 4); gz++) { const k = gx * 8192 + gz; if (!beds.has(k)) beds.set(k, []); beds.get(k).push([a, b]); } }
+  const bedAt = (x, z) => { let best = null; for (const [a, b] of beds.get(Math.floor(x / 4) * 8192 + Math.floor(z / 4)) || []) { const ex = b[0] - a[0], ez = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / (ex * ex + ez * ez || 1))), d = Math.hypot(x - a[0] - ex * t, z - a[1] - ez * t); if (!best || d < best[0]) best = [d, a[2] + (b[2] - a[2]) * t]; } return best; };
+  const smooth1 = (t) => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
   W.paved = (x, z) => {
     let k = null; for (const { a, x0, x1, z0, z1 } of areas) if (x > x0 && x < x1 && z > z0 && z < z1 && inside(a.rings[0], x, z) && !a.rings.slice(1).some((h) => inside(h, x, z))) { k = a.kind; break; } if (k === null) return null;
     for (const m of W.marks) if (Math.abs(m.x - x) < m.r && Math.abs(m.z - z) < m.r && inside(m.hull, x, z)) return null;
-    const y = ground(x, z) + D.lift; return k === 2 && W.coast(x, z) < 2.5 ? Math.max(y, 0.42) : y;
+    const g = ground(x, z), b = beds.size ? bedAt(x, z) : null; if (b && b[0] < 0.62) return b[1] + 0.02; /* (on a tram's bed) */ const y = b && b[0] < 0.86 ? g + Math.min(D.lift, 0.06 + (D.lift - 0.06) * smooth1((b[0] - 0.7) / 0.16)) : g + D.lift; return k === 2 && W.coast(x, z) < 2.5 ? Math.max(y, 0.42) : y;
   };
   const pave = paving(W), stuff = kitMaterial(W), leaf = weathered(new THREE.MeshStandardMaterial({ roughness: 0.95 }), { snow: 0.85, wet: 0.2, shine: 0.6 }), T = shapes(), sight = sights(), groups = [], B = A.squaresBin; let o = 0;
   for (const p of D.parts) {

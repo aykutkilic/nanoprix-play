@@ -23,6 +23,7 @@ export class Solids {
       for (let i = 0; i < n; i += 2) { const px = P[i], pz = P[i + 1], ex = P[(i + 2) % n] - px, ez = P[(i + 3) % n] - pz; for (let k = -1; k <= 1; k++) { const ux = dx + sx * k, uz = dz + sz * k, D = ux * ez - uz * ex; if (Math.abs(D) < 1e-9) continue; const s = ((px - ax) * ez - (pz - az) * ex) / D, q = ((px - ax) * uz - (pz - az) * ux) / D; if (s >= 0 && s < t && q >= 0 && q <= 1 && ay + dy * s < w.y1 + 0.2) t = s; } }
     }
     if (t < 1) t = Math.max(0, t - 0.1 / L);
+    if (this.W.palace) t = Math.min(t, this.W.palace.sight(ax, ay, az, ax + dx * t, ay + dy * t, az + dz * t) * t); // (and what the palace has built: client/topkapi.js)
     for (const [cx, cy, cz, R, H] of this.crowns) { // (an ellipsoid)
       const R1 = R + 0.06, H1 = H + 0.06, ox = (ax - cx) / R1, oy = (ay - cy) / H1, oz = (az - cz) / R1, vx = dx / R1, vy = dy / H1, vz = dz / R1, A = vx * vx + vy * vy + vz * vz, B = ox * vx + oy * vy + oz * vz, C = ox * ox + oy * oy + oz * oz - 1, q = B * B - A * C; if (q <= 0) continue; const s = C < 0 ? 1 : (-B - Math.sqrt(q)) / A; // (in a tree: its leaves are left out, world.js)
        if (s >= 0 && s < t) t = s;

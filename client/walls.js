@@ -5,7 +5,8 @@ import { noiseTexture } from './realism.js';
 import { weathered } from './weather.js';
 
 export function buildWalls(W) {
-  const D = W.A.walls; if (!D) return;
+  const D0 = W.A.walls; if (!D0) return; const G = (W.A.topkapi && W.A.topkapi.wallGaps) || [], gone = G.length && ((x, z) => G.some(([gx, gz, r]) => Math.hypot(gx - x, gz - z) < r)); // (open where the palace's gates stand in a wall's line – OSM draws Bâb-ı Hümâyun as wall: tools/topkapi.mjs)
+  const D = gone ? { ...D0, walls: D0.walls.flatMap((run) => { const out = []; let cur = []; for (const p of run) { if (gone(p[0], p[1])) { if (cur.length > 1) out.push(cur); cur = []; } else cur.push(p); } if (cur.length > 1) out.push(cur); return out; }), towers: D0.towers.filter((t) => !gone(t.x, t.z)) } : D0;
   const pos = [], nor = [], uv = [], idx = [], quad = (a, b, c, d, n, u0, u1, v0, v1) => { const k = pos.length / 3; pos.push(...a, ...b, ...c, ...d); for (let i = 0; i < 4; i++) nor.push(...n); uv.push(u0, v0, u1, v0, u0, v1, u1, v1); idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); };
   // a block: four sides and a top, its stones laid along u (in units of the world)
   const block = (x, z, y0, y1, along, w, d, u = 0) => { const c = Math.cos(along), s = Math.sin(along), P = (a, b, y) => [x + a * s + b * c, y, z + a * c - b * s], A = w / 2, B = d / 2; for (const [p, q, n, u0] of [[[-A, B], [A, B], [c, 0, -s], u], [[A, -B], [-A, -B], [-c, 0, s], u + w], [[A, B], [A, -B], [s, 0, c], u + w], [[-A, -B], [-A, B], [-s, 0, -c], u]]) { const l = Math.hypot(q[0] - p[0], q[1] - p[1]); quad(P(...p, y0), P(...q, y0), P(...p, y1), P(...q, y1), n, u0, u0 + l, y0, y1); } quad(P(-A, B, y1), P(A, B, y1), P(-A, -B, y1), P(A, -B, y1), [0, 1, 0], u, u + w, y1, y1 + d); };

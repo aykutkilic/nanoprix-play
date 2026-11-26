@@ -32,6 +32,8 @@ export function buildWalls(W) {
     // its top: a flat roof of stone
     let cx = 0, cz = 0; for (const p of q) { cx += p[0] / n; cz += p[1] / n; } for (let i = 0; i < n; i++) { const a = q[i], b = q[(i + 1) % n], k = pos.length / 3; pos.push(t.x + cx, y1, t.z + cz, t.x + a[0], y1, t.z + a[1], t.x + b[0], y1, t.z + b[1]); for (let j = 0; j < 3; j++) nor.push(0, 1, 0); uv.push(0, y1, 0.3, y1, 0.6, y1 + 0.3); idx.push(k, ...(sg > 0 ? [k + 2, k + 1] : [k + 1, k + 2])); }
   }
+  // every face turned the way its normal says, whichever way round a wall or a tower's outline was drawn (else one side is not drawn)
+  for (let t = 0; t < idx.length; t += 3) { const [a, b, c] = [idx[t] * 3, idx[t + 1] * 3, idx[t + 2] * 3], ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2], vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2]; if ((uy * vz - uz * vy) * nor[a] + (uz * vx - ux * vz) * nor[a + 1] + (ux * vy - uy * vx) * nor[a + 2] < 0) { idx[t + 1] = c / 3; idx[t + 2] = b / 3; } }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeBoundingSphere();
   const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.92 });
   m.onBeforeCompile = (s) => {

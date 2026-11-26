@@ -18,6 +18,7 @@ import { buildInfra } from './infra.js';
 import { buildGreen } from './green.js';
 import { buildParking } from './parking.js';
 import { buildTopkapi } from './topkapi.js';
+import { buildBeacons } from './beacons.js';
 import { pack, Keeper, Still, merge } from './gpu.js';
 import { buildTransit } from './transit.js';
 import { Transit } from '../shared/transit.js';
@@ -29,9 +30,9 @@ const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a
 export const CHUNK = 64; // grid cells across a piece of ground
 
 export async function buildWorld(scene, A, net, onStage = () => {}) {
-  const root = new THREE.Group(), still = new Still(); scene.add(root); root.add(still);
+  const root = new THREE.Group(), still = new Still(), under = new THREE.Group(); scene.add(root); root.add(still); scene.add(under); under.userData.below = true; // (under: what is seen from a hall below – the trains, the ways down; view.js draws nothing else there)
   const g = A.map.grid, M0 = A.map.map, { height, coast } = A.ground;
-  const night = { value: 0 }, time = { value: 0 }, W = { time, keeper: new Keeper(), still, mouths: { value: net.roads.filter((r) => r.tunnel).flatMap(() => [0, 1]).map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, walkOn: [], glow: [], spots: [], updates: [], A };
+  const night = { value: 0 }, time = { value: 0 }, W = { under, time, keeper: new Keeper(), still, mouths: { value: net.roads.filter((r) => r.tunnel).flatMap(() => [0, 1]).map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, root, night, time, height, coast, net, grid: g, walkOn: [], glow: [], spots: [], updates: [], A };
   W.transit = net.transit = new Transit({ ...A.transit, islands: A.roads.islands }, A.lines);
   W.lit = (m, color, k) => { m.emissive = new THREE.Color(color); m.emissiveIntensity = 0; W.glow.push([m, k]); return m; };
   W.mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, ...o });
@@ -220,7 +221,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
 
   // ------------------------------------------------------------ the city (buildings.js), and its trees in tiles
   const R = rng(11), M = new THREE.Matrix4(), Q = new THREE.Quaternion(), tint = new THREE.Color();
-  buildBuildings(W);
+  buildBuildings(W); buildBeacons(W);
   const TILE = 90, put = (tiles, x, z) => { const k = Math.floor(x / TILE) * 1000 + Math.floor(z / TILE); if (!tiles.has(k)) tiles.set(k, { x: (Math.floor(x / TILE) + 0.5) * TILE, z: (Math.floor(z / TILE) + 0.5) * TILE, trees: [], cyp: [] }); return tiles.get(k); };
   const crown = new THREE.IcosahedronGeometry(1, 2), cp = crown.attributes.position;
   for (let k = 0; k < cp.count; k++) { const x = cp.getX(k), y = cp.getY(k), z = cp.getZ(k), f = 0.8 + 0.3 * Math.abs(Math.sin(x * 5.1 + y * 3.3) * Math.cos(z * 4.7 + y)); cp.setXYZ(k, x * f, y * f * 0.9 + 0.85, z * f); }
@@ -232,11 +233,13 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   const leaf = weathered(leafMat, { snow: 0.85, wet: 0.2, shine: 0.6 }), cyp = new THREE.SphereGeometry(1, 6, 6).scale(0.42, 2.1, 0.42).translate(0, 1.9, 0);
   const inst = (geo, mat, list, fn, grp, cast = true) => { if (!list.length) return; const m = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((o, k) => fn(m, o, k)); m.castShadow = cast; m.receiveShadow = true; m.computeBoundingSphere(); grp.add(m); return m; };
   const tileList = [];
-  A.stream.on('h', (at, b) => { const { T } = readHouses(b, A.map), R = rng(11 + at.i * 131 + at.j * 7), tiles = new Map(); for (let k = 0; k < T.length; k += 4) { const x = T[k] / 20, z = T[k + 1] / 20; (R() < 0.14 ? put(tiles, x, z).cyp : put(tiles, x, z).trees).push([x, T[k + 2] / 400, z, T[k + 3] / 1000]); }
-  for (const t of tiles.values()) {
+  const grow = (tiles, R) => { for (const t of tiles.values()) {
     const grp = new THREE.Group(); t.grp = grp; tileList.push(t);
     t.leaf = [inst(crown, leaf, t.trees, (m, [x, y, z, s], k) => { M.compose(V(x, y, z), Q.setFromAxisAngle(UP, R() * 6), V(s, s * (0.85 + R() * 0.4), s)); m.setMatrixAt(k, M); m.setColorAt(k, tint.setHSL(0.22 + R() * 0.07, 0.3 + R() * 0.22, 0.14 + R() * 0.11)); }, grp), inst(cyp, leaf, t.cyp, (m, [x, y, z, s], k) => { M.compose(V(x, y, z), Q.identity(), V(s, s, s)); m.setMatrixAt(k, M); m.setColorAt(k, tint.setHSL(0.3, 0.26, 0.1 + R() * 0.05)); }, grp)].filter(Boolean); still.add(grp);
-  } });
+  } };
+  A.stream.on('h', (at, b) => { const { T } = readHouses(b, A.map), R = rng(11 + at.i * 131 + at.j * 7), tiles = new Map(); for (let k = 0; k < T.length; k += 4) { const x = T[k] / 20, z = T[k + 1] / 20; (R() < 0.14 ? put(tiles, x, z).cyp : put(tiles, x, z).trees).push([x, T[k + 2] / 400, z, T[k + 3] / 1000]); } grow(tiles, R); });
+  // trees put by hand: [x, y, z, size, cypress] (client/topkapi.js: the palace's courts)
+  W.plant = (list, seed = 5) => { const R = rng(seed), tiles = new Map(); for (const [x, y, z, s, c] of list) (c ? put(tiles, x, z).cyp : put(tiles, x, z).trees).push([x, y, z, s]); grow(tiles, R); };
   W.updateTiles = (cam, far) => { for (const t of tileList) { const d = Math.hypot(t.x - cam.x, t.z - cam.z) - TILE * 0.71; t.grp.visible = d < far; for (const m of t.leaf) m.visible = d < far * 0.6; } };
   await onStage('city');
 

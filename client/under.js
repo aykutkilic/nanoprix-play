@@ -10,7 +10,7 @@ export class Below {
     this.halls = l.stops.filter((q) => q.under); const hall = (s) => { for (const q of this.halls) if (Math.abs(q.s - s) < HALL.L) return q; return null; };
     const P = [], I = [], K = [], LP = [], LI = [], quad = (A, B, a, b, c, d, col) => { const n = A.length / 3; A.push(...a, ...b, ...c, ...d); if (col) for (let k = 0; k < 4; k++) K.push(...col); B.push(n, n + 1, n + 2, n + 1, n + 3, n + 2); };
     // in steps, with one on every edge of a hall
-    const S = new Set(); for (let s = 0; s <= l.len; s += 2) S.add(+s.toFixed(2)); for (const q of this.halls) { for (const e of [-1, 1]) S.add(+(q.s + e * HALL.L).toFixed(2)); if (q.entry) for (const e of [-1, 1]) S.add(+(q.entry.s + e * (PASS.W + 0.02)).toFixed(2)); } const list = [...S].filter((s) => s >= 0 && s <= l.len).sort((a, b) => a - b), at = (f, u, v) => [f[0] - f[4] * u, f[1] + v, f[2] + f[3] * u], shade = (c, k) => c.map((v) => v * k);
+    const S = new Set([0, l.len]); for (let s = 0; s <= l.len; s += 2) S.add(+s.toFixed(2)); /* (the very end too: else a sloping hall is open at its end) */ for (const q of this.halls) { for (const e of [-1, 1]) S.add(+(q.s + e * HALL.L).toFixed(2)); if (q.entry) for (const e of [-1, 1]) S.add(+(q.entry.s + e * (PASS.W + 0.02)).toFixed(2)); } const list = [...S].filter((s) => s >= 0 && s <= l.len).sort((a, b) => a - b), at = (f, u, v) => [f[0] - f[4] * u, f[1] + v, f[2] + f[3] * u], shade = (c, k) => c.map((v) => v * k);
     const WALL = [0.21, 0.21, 0.225], ROOF = [0.12, 0.12, 0.13], FLOOR = [0.10, 0.095, 0.09], TILE = [0.72, 0.71, 0.68], DECK = [0.50, 0.49, 0.47], YEL = [0.85, 0.66, 0.1], CL = [C.r, C.g, C.b];
     for (let i = 0; i + 1 < list.length; i++) {
       const s0 = list[i], s1 = list[i + 1], a = l.frame(s0), b = l.frame(s1); if (l.st[a[5]] !== 2 && l.st[b[5]] !== 2) continue; const h = hall((s0 + s1) / 2), W = h ? HALL.W : TUBE.W, H = h ? HALL.H : TUBE.H, k = 0.82 + 0.18 * ((i % 2) ? 1 : 0.72), y0 = -0.12;
@@ -22,6 +22,8 @@ export class Below {
       const r = h ? W : W * 0.7; quad(P, I, at(a, -r, H), at(b, -r, H), at(a, r, H), at(b, r, H), h ? shade(TILE, 0.6) : shade(ROOF, k)); quad(P, I, at(a, -W, 0), at(b, -W, 0), at(a, W, 0), at(b, W, 0), shade(FLOOR, k));
       if (h) for (const e of [s0, s1]) if (Math.abs(Math.abs(e - h.s) - HALL.L) < 0.02) { const f = l.frame(e); for (const sd of [1, -1]) quad(P, I, at(f, sd * TUBE.W * 0.9, y0), at(f, sd * HALL.W, y0), at(f, sd * TUBE.W * 0.9, HALL.H), at(f, sd * HALL.W, HALL.H), shade(TILE, 0.7)); quad(P, I, at(f, -TUBE.W, TUBE.H * 0.97), at(f, TUBE.W, TUBE.H * 0.97), at(f, -TUBE.W, HALL.H), at(f, TUBE.W, HALL.H), shade(TILE, 0.7)); }
     }
+    // the door's sides, a little way into the passage: where the hall bends the passage's walls do not quite meet its wall
+    for (const q of this.halls) if (q.entry) for (const e of [-1, 1]) { const f = l.frame(q.entry.s + e * (PASS.W + 0.02)), sd = q.entry.sd; quad(P, I, at(f, sd * (HALL.W - 0.02), -0.12), at(f, sd * (HALL.W + 0.9), -0.12), at(f, sd * (HALL.W - 0.02), HALL.H), at(f, sd * (HALL.W + 0.9), HALL.H), [0.62, 0.61, 0.58]); }
     // the footbridges
     for (const q of this.halls) { const vb = overAt(q.entry, q.s, l), k = vb > 0 ? -1 : 1, F = (v) => l.frame(q.s + v), box = (u0, u1, v0, v1, y0, y1, c) => { const A = F(v0), B = F(v1), n = [at(A, u0, y0), at(A, u1, y0), at(B, u0, y0), at(B, u1, y0)], m = [at(A, u0, y1), at(A, u1, y1), at(B, u0, y1), at(B, u1, y1)]; quad(P, I, m[0], m[1], m[2], m[3], c); quad(P, I, n[0], n[1], n[2], n[3], shade(c, 0.5)); quad(P, I, n[0], n[1], m[0], m[1], shade(c, 0.75)); quad(P, I, n[2], n[3], m[2], m[3], shade(c, 0.75)); quad(P, I, n[0], n[2], m[0], m[2], shade(c, 0.65)); quad(P, I, n[1], n[3], m[1], m[3], shade(c, 0.65)); }, RAIL = [0.40, 0.43, 0.46];
       box(-HALL.W, HALL.W, vb - OVER.D, vb + OVER.D, OVER.Y - 0.05, OVER.Y, DECK); box(-HALL.W, HALL.W, vb - k * OVER.D - 0.012, vb - k * OVER.D + 0.012, OVER.Y, OVER.Y + 0.26, RAIL); box(-OVER.U, OVER.U, vb + k * OVER.D - 0.012, vb + k * OVER.D + 0.012, OVER.Y, OVER.Y + 0.26, RAIL);
@@ -42,7 +44,7 @@ export class Below {
       const q = new THREE.BufferGeometry(); q.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3)); q.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); q.setIndex(bi); const o = new THREE.Mesh(q, new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide, fog: false })); o.frustumCulled = false; g.add(o);
       const im = new THREE.InstancedMesh(pg, pm, ppl.length), M = new THREE.Matrix4(), c = new THREE.Color(); ppl.forEach((p, k) => { M.makeTranslation(...p); im.setMatrixAt(k, M); im.setColorAt(k, c.set(['#32425a', '#7a3b34', '#4d5b3c', '#c9a13a', '#2b2b30', '#8a8f96', '#b7522f'][k % 7])); }); im.frustumCulled = false; g.add(im);
     }
-    this.scene.add(g); void tram;
+    g.userData.below = true; this.scene.add(g); void tram;
   }
   hide() { if (!this.g) { this.line = null; return; } this.scene.remove(this.g); this.g.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } if (o.isInstancedMesh) o.dispose(); }); this.g = null; this.line = null; }
 }

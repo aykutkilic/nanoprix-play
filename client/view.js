@@ -19,7 +19,7 @@ export class View {
     this.camera = new THREE.PerspectiveCamera(60, 1, 0.35, 2600);
     this.persp = this.camera; this.ortho = new THREE.OrthographicCamera(-10, 10, 10, -10, 1, 420); this.zoom = 1;
     addEventListener('wheel', (e) => { if (!e.target.closest || !e.target.closest('.panel')) this.zoom = Math.max(0.5, Math.min(2.6, this.zoom * Math.exp(e.deltaY * 0.0012))); }, { passive: true });
-    this.sky = makeSky(); this.scene.add(this.sky);
+    this.sky = makeSky(); this.sky.userData.below = true; this.scene.add(this.sky); // (kept from a hall: up the stairs the opening shows it)
     this.envSky = skyEnvironment(r, '#27505f'); this.envNight = skyEnvironment(r, '#0a1420', 1);
     const s = (this.sun = new THREE.DirectionalLight('#ffe3bf', 3.4)); s.castShadow = true; s.shadow.bias = -0.0011; s.shadow.normalBias = 0.09; s.shadow.radius = 2.2;
     this.scene.add(s, s.target); this.shadowR = 42;
@@ -160,7 +160,10 @@ export class View {
     this.sky.position.copy(this.camera.position); this.sky.material.uniforms.uTime.value = now / 1000;
     if (this.world) { const f = Math.min(this.far, this.camera === this.ortho ? 1e3 : 2.9 / this.scene.fog.density); this.world.update(dt, now, this.look || this.camera.position, f); }
     if (this.cabin && this.cabin.mirror && this.camera === this.persp) this.cabin.mirror.render(this, this.level === 'high' ? 2 : this.level === 'medium' ? 3 : 4);
+    // from a hall below only what is of it (marked userData.below: the hall, its trains, the ways down, who walks there) and the lights: the street over a shallow one – ground, sea, roads, houses, cars – may reach down into it
+    const hid = []; if (this.world && this.world.deepNow) for (const o of this.scene.children) if (o.visible && !o.isLight && !o.userData.below) { o.visible = false; hid.push(o); }
     if (this.quality.post) this.post.render(this.scene, this.camera); else { this.renderer.setRenderTarget(null); this.renderer.render(this.scene, this.camera); }
+    for (const o of hid) o.visible = true;
     if (this.watch) this.watch.frame(now);
   }
 }

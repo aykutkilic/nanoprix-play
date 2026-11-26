@@ -48,6 +48,6 @@ export class Entries {
     // signs: to the line where the flight ends, the way out over it
     { const cv = document.createElement('canvas'); cv.width = 512; cv.height = 192; const x = cv.getContext('2d'), row = (y, bg, t) => { x.fillStyle = bg; x.fillRect(0, y, 512, 96); x.fillStyle = '#fff'; x.font = '800 46px "Arial Narrow", Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(t, 256, y + 50, 486); }; row(0, way.color || '#16407c', `↓  ${way.kind === 'rail' ? 'MARMARAY' : way.ref}  ${stop.name}`); row(96, '#1c1f23', '↑  ÇIKIŞ  ·  EXIT'); const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace; tx.anisotropy = 4; const m = new THREE.MeshBasicMaterial({ map: tx, fog: false, toneMapped: true });
       const sign = (s, flip, r, v) => { const p = onPass(E, s), w = 1.1, hh = 0.17, q = new THREE.PlaneGeometry(w, hh), uv = q.attributes.uv; for (let i = 0; i < 4; i++) uv.setY(i, r ? uv.getY(i) * 0.5 : 0.5 + uv.getY(i) * 0.5); const k = new THREE.Mesh(q, m); k.position.set(p.x, p.y + v, p.z); k.rotation.y = Math.atan2(p.dx, p.dz) + (flip ? 0 : Math.PI); g.add(k); }; sign(OPEN + 0.02, false, 0, H - 0.1); sign(E.gate - 0.04, false, 0, H - 0.1); sign(E.gate + 0.04, true, 1, H - 0.1); sign(E.len - 0.1, true, 1, H - 0.12); }
-    this.W.root.add(g); g.traverse((q) => { q.matrixAutoUpdate = true; }); this.run(e, 0);
+    this.W.under.add(g); g.traverse((q) => { q.matrixAutoUpdate = true; }); this.run(e, 0);
   }
 }

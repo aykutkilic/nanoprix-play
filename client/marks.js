@@ -71,7 +71,7 @@ export function buildMarks(W) {
     const centre = (t) => { const i = Math.min(r.n - 1.001, Math.max(0, i0 + t * (i1 - i0))), k = Math.floor(i), f = i - k; return V(r.p[k * 3] * (1 - f) + r.p[k * 3 + 3] * f, 0, r.p[k * 3 + 1] * (1 - f) + r.p[k * 3 + 4] * f); };
     for (const [p, t] of [[a, 0], [b, 1]]) {
       const base = Math.min(0.5, height(p.x, p.z)) - 0.6, H = topY - base, dy = deck(t);
-      for (const s of [-1, 1]) { const leg = piece(new THREE.BoxGeometry(0.55, H, 0.8), portal, p.x + side.x * s * hw, base + H / 2, p.z + side.z * s * hw, g); leg.rotation.y = yaw; }
+      for (const s of [-1, 1]) { const leg = piece(new THREE.BoxGeometry(0.55, H, 0.8), portal, p.x + side.x * s * hw, base + H / 2, p.z + side.z * s * hw, g); leg.rotation.y = yaw; W.beacon?.(p.x + side.x * s * hw, topY + 0.02, p.z + side.z * s * hw); }
       for (const y of [dy - 0.75, (dy + topY) / 2 + 0.6, topY - 0.5]) { const bar = piece(new THREE.BoxGeometry(hw * 2, 0.7, 0.6), portal, p.x, y, p.z, g); bar.rotation.y = yaw; }
     }
     const back = 24, hang = [], cableI = lit(steel.clone(), '#ff2d55', 3.2);

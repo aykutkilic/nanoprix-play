@@ -5,7 +5,7 @@ import * as THREE from './vendor/three.module.min.js';
 import { houseMask } from './assets.js';
 import { handOver } from './gpu.js';
 // the toys of the old model these take the place of (tools/topkapi.mjs REPLACES)
-export const REPLACES = new Set(['topkapi-sarayi', 'topkapi-aya-irini', 'cinili-kosk', 'sark-eserleri-muzesi']);
+export const REPLACES = new Set(['topkapi-sarayi', 'topkapi-aya-irini', 'cinili-kosk', 'sark-eserleri-muzesi', 'alay-kosku', 'ahmet-hamdi-tanpinar-edebiyat-muze-kutuphanesi']);
 const BASE = new URL('../assets/', import.meta.url), NEAR = 25; // (closer than this to its precinct, in units, the pieces; further, the light one)
 const get = async (n, gz) => { const r = await fetch(new URL(n, BASE)); if (!r.ok) throw new Error(`${n}: ${r.status}`); return gz ? new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer() : r.json(); };
 
@@ -49,6 +49,9 @@ export async function buildTopkapi(W) {
     return 1;
   };
   W.palace = { floorAt, sight, gates: D.gates, data: D };
+  // the courts' trees (tools/courts.mjs): on the floor where they stand; in the way, as the city's are (client/solid.js)
+  if (D.trees?.length && W.plant) { const list = D.trees.map(([x, z, s, c]) => { const g = W.height(x, z); return [x, floorAt(x, z, g) ?? g, z, s, c]; }); W.plant(list, 23);
+    const T = new Int32Array(list.length * 4); list.forEach(([x, y, z, s], k) => T.set([Math.round(x * 20), Math.round(z * 20), Math.round(y * 400), Math.round(s * 1000)], k * 4)); (W.trees ||= []).push({ T, x0: Math.min(...list.map((t) => t[0])), x1: Math.max(...list.map((t) => t[0])), z0: Math.min(...list.map((t) => t[2])), z1: Math.max(...list.map((t) => t[2])) }); }
   W.walkOn.push(floorAt);
   // drawn as the toys are (client/marks.js)
   const mat = W.markStone, far = new THREE.Group(), near = new THREE.Group(); far.name = 'Topkapı (far)'; near.name = 'Topkapı'; W.still.add(far); W.still.add(near); near.visible = false;

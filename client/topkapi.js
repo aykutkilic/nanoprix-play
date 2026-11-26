@@ -10,8 +10,8 @@ const BASE = new URL('../assets/', import.meta.url), NEAR = 25; // (closer than 
 const get = async (n, gz) => { const r = await fetch(new URL(n, BASE)); if (!r.ok) throw new Error(`${n}: ${r.status}`); return gz ? new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer() : r.json(); };
 
 // the pieces as tools/topkapi.mjs packs them: int16 corners, int8 normals, colours with the kind of thing in the fourth
-function pieces(chunks, buf, mat, parent, cast) {
-  let o = 0; const out = [];
+function pieces(chunks, buf, mat, parent, cast, o0 = 0) {
+  let o = o0; const out = [];
   for (const c of chunks) {
     const pos = new Int16Array(buf, o, c.nv * 4); o += c.nv * 8; const nor = new Int8Array(buf, o, c.nv * 4); o += c.nv * 4; const col = new Uint8Array(buf, o, c.nv * 4); o += c.nv * 4;
     const idx = c.wide ? new Uint32Array(buf, o, c.ni) : new Uint16Array(buf, o, c.ni); o += c.ni * (c.wide ? 4 : 2) + c.pad;
@@ -28,7 +28,7 @@ export async function buildTopkapi(W) {
   const on = (B, k) => k >= 0 && (B[k >> 3] >> (k & 7)) & 1, P0 = D.precinct || [], inPrecinct = (x, z) => { let c = false; for (let i = 0, j = P0.length - 1; i < P0.length; j = i++) if (P0[i][1] > z !== P0[j][1] > z && x < ((P0[j][0] - P0[i][0]) * (z - P0[i][1])) / (P0[j][1] - P0[i][1]) + P0[i][0]) c = !c; return c; };
   // houses and trees of the map that stand where the palace's buildings do are left out (they are the same buildings, as OSM has them)
   houseMask.f = (x, z, B, o) => {
-    if (!B) return on(builtBits, cell(x, z)); // (a tree: not in a building)
+    if (!B) return inPrecinct(x, z) || on(builtBits, cell(x, z)); // (a tree: not in a building; within the walls the trees are ist's, D.trees)
     if (inPrecinct(x, z)) return true; // (within the palace's walls every house is one of its own, or the park's)
     const n = B[o + 5] & 255, P = []; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; for (let k = 0; k < n; k++) { const px = x + B[o + 6 + k * 2] / 100, pz = z + B[o + 7 + k * 2] / 100; P.push(px, pz); x0 = Math.min(x0, px); x1 = Math.max(x1, px); z0 = Math.min(z0, pz); z1 = Math.max(z1, pz); }
     if (x1 < F.x0 || z1 < F.z0 || x0 > F.x0 + F.w * F.c || z0 > F.z0 + F.h * F.c) return false;
@@ -57,10 +57,13 @@ export async function buildTopkapi(W) {
   const mat = W.markStone, far = new THREE.Group(), near = new THREE.Group(); far.name = 'Topkapı (far)'; near.name = 'Topkapı'; W.still.add(far); W.still.add(near); near.visible = false;
   let cx = 0, cz = 0, n = 0; for (const c of D.far) { cx += c.x * c.nv; cz += c.z * c.nv; n += c.nv; } cx /= n || 1; cz /= n || 1;
   get('topkapi-far.bin', true).then((b) => pieces(D.far, b, mat, far, true)).catch((e) => console.warn('topkapi far', e.message));
+  // the gardens' ground (tools/topkapi.mjs, after ist's gardens.js): the courts' stone, the lawns and grass, the paths, each over the one under it
+  const ground = new THREE.Group(); ground.name = 'Topkapı gardens'; W.still.add(ground);
+  if (D.garden?.layers?.length) get('topkapi-ground.bin', true).then((b) => { D.garden.layers.forEach((L, k) => { const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1 - k, polygonOffsetUnits: -2 - 2 * k }); pieces(L.chunks, b, m, ground, false, L.at); }); }).catch((e) => console.warn('topkapi ground', e.message));
   let asked = false, ready = false;
   W.updates.push((dt, now, cam, farOff) => {
     const d = Math.hypot(cam.x - cx, cam.z - cz) - 45;
     if (!asked && d < NEAR * 2.2) { asked = true; get('topkapi.bin', true).then((b) => { pieces(D.near, b, mat, near, true); ready = true; }).catch((e) => console.warn('topkapi near', e.message)); }
-    const close = ready && d < NEAR; near.visible = close; far.visible = !close && d < (farOff || 300) * 2.2; // (as far as the other great landmarks are seen: client/marks.js)
+    const close = ready && d < NEAR; near.visible = close; far.visible = !close && d < (farOff || 300) * 2.2; ground.visible = d < (farOff || 300) * 1.2; // (as far as the other great landmarks are seen: client/marks.js)
   });
 }

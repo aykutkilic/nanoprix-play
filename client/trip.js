@@ -11,7 +11,7 @@ import { t, key } from './i18n.js';
 import { esc } from './hud.js';
 const WALK = 2.0, RUN = 4.2, JUMP = 2.25, GRAVITY = 9, wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a)), badge = (ref, color) => `<b style="background:${color || '#2f7d4f'}">${esc(ref)}</b>`;
 export class Trip {
-  constructor(game) { this.game = game; this.mode = 'car'; this.below = new Below(game.view.scene); this.panelAt = 0; this.w = {}; this.o = {}; }
+  constructor(game) { this.game = game; this.mode = 'car'; this.below = new Below(game.view.scene, () => game.view.world); this.panelAt = 0; this.w = {}; this.o = {}; }
   get TR() { return this.game.view.world.transit; }
   get deep() { return !!this.hall || (!!this.pass && this.passed > 1.2) || !!(this.game.view.rig && this.game.view.rig.kind === 'tube' && this.mode === 'ride'); }
   get away() { return this.mode !== 'car'; }
@@ -106,7 +106,7 @@ export class Trip {
   }
   // ---------------------------------------------------------------- each frame; what the camera follows
   frame(dt, now, T, inp) {
-    const G = this.game, V = G.view; this.note = ''; this.alone = G.cars.size === 1; if (this.mode !== 'car' && this.alone && G.input.keys.has('KeyZ') && now - (this.skipAt || 0) > 90) { this.skipAt = now; G.link.send({ t: 'skip', ms: 1000 }); } if (this.mode === 'car') { V.rig = null; if (this.stopping) { if (now - this.stopping > 6000 || G.aboard) this.stopping = 0; else if (Math.abs(G.me.speed) < 1.6) { this.stopping = 0; if (G.net.under(G.me) !== 2) { this.getOut(); return this.me; } } else G.brakeFor = 0.25; } this.panel(now, T); return null; }
+    const G = this.game, V = G.view; this.note = ''; this.below.frame(dt, T, V.camera.position); /* (the hall's people and boards) */ this.alone = G.cars.size === 1; if (this.mode !== 'car' && this.alone && G.input.keys.has('KeyZ') && now - (this.skipAt || 0) > 90) { this.skipAt = now; G.link.send({ t: 'skip', ms: 1000 }); } if (this.mode === 'car') { V.rig = null; if (this.stopping) { if (now - this.stopping > 6000 || G.aboard) this.stopping = 0; else if (Math.abs(G.me.speed) < 1.6) { this.stopping = 0; if (G.net.under(G.me) !== 2) { this.getOut(); return this.me; } } else G.brakeFor = 0.25; } this.panel(now, T); return null; }
     if (this.mode === 'walk') {
       const m = this.me; if (now - (this.padAt || 0) > 900) { this.padAt = now; this.pads = this.near(m.x, m.z, 60); }
       // as in Minecraft: W A S D go where one looks and to the sides, the mouse looks about (a click takes it), Space jumps, Ctrl runs, Shift goes softly;

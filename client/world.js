@@ -22,6 +22,7 @@ import { buildTopkapi } from './topkapi.js';
 import { buildBeacons } from './beacons.js';
 import { pack, Keeper, Still, merge } from './gpu.js';
 import { buildTransit } from './transit.js';
+import { buildStops } from './stops.js';
 import { Transit } from '../shared/transit.js';
 import { buildSigns } from './signs.js';
 import { buildSignals } from './signals.js';
@@ -246,7 +247,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
 
   buildRoads(W); await onStage('roads');
   buildMarks(W); await buildTopkapi(W); buildSquares(W); buildGalata(W); buildWalls(W); buildInfra(W); buildGreen(W); buildParking(W); buildBufe(W); await onStage('landmarks');
-  buildLife(W); await onStage('life'); buildShips(W, A); buildTransit(W); await onStage('ships');
+  buildLife(W); await onStage('life'); buildShips(W, A); buildTransit(W); buildStops(W); await onStage('ships');
   buildSigns(W); buildSignals(W); await onStage('signs');
   lampTex.needsUpdate = true;
 

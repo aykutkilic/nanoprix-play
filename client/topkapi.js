@@ -64,6 +64,6 @@ export async function buildTopkapi(W) {
   W.updates.push((dt, now, cam, farOff) => {
     const d = Math.hypot(cam.x - cx, cam.z - cz) - 45;
     if (!asked && d < NEAR * 2.2) { asked = true; get('topkapi.bin', true).then((b) => { pieces(D.near, b, mat, near, true); ready = true; }).catch((e) => console.warn('topkapi near', e.message)); }
-    const close = ready && d < NEAR; near.visible = close; far.visible = !close && d < (farOff || 300) * 2.2; ground.visible = d < (farOff || 300) * 1.2; // (as far as the other great landmarks are seen: client/marks.js)
+    const close = ready && d < NEAR; near.visible = close; far.visible = !close && d < (farOff || 300) * 2.2; ground.visible = d < (farOff || 300) * 2.2; // (as far as the palace: the game's ground under the courts is not drawn) // (as far as the other great landmarks are seen: client/marks.js)
   });
 }

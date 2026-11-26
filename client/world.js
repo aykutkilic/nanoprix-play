@@ -17,6 +17,7 @@ import { buildWalls } from './walls.js';
 import { buildInfra } from './infra.js';
 import { buildGreen } from './green.js';
 import { buildParking } from './parking.js';
+import { buildTopkapi } from './topkapi.js';
 import { pack, Keeper, Still, merge } from './gpu.js';
 import { buildTransit } from './transit.js';
 import { Transit } from '../shared/transit.js';
@@ -44,11 +45,13 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   // ------------------------------------------------------------ terrain, in pieces, finer near the camera
   const ground = new THREE.MeshStandardMaterial({ roughness: 0.96 }); 
   const urbanTex = tex(A.urban);
+  W.cut = { tex: { value: new THREE.DataTexture(new Uint8Array(1), 1, 1, THREE.RedFormat) }, box: { value: new THREE.Vector4(0, 0, 1e-6, 1e-6) } }; W.cut.tex.value.needsUpdate = true; // (where something lies on the ground of its own: client/topkapi.js)
   ground.onBeforeCompile = (s) => {
-    Object.assign(s.uniforms, { uNight: night, uNoise: { value: noiseTexture() }, uShore: { value: shoreTex }, uPark: { value: parkTex }, uUrban: { value: urbanTex }, uArea: { value: area }, uMouth: W.mouths });
+    Object.assign(s.uniforms, { uCut: W.cut.tex, uCutBox: W.cut.box, uNight: night, uNoise: { value: noiseTexture() }, uShore: { value: shoreTex }, uPark: { value: parkTex }, uUrban: { value: urbanTex }, uArea: { value: area }, uMouth: W.mouths });
     s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vW; varying float vUpN;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvW = position; vUpN = normal.y;');
-    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uMouth[' + W.mouths.value.length + '];\nuniform sampler2D uNoise, uShore, uPark, uUrban; uniform vec4 uArea; uniform float uNight; varying vec3 vW; varying float vUpN; float gBump; float gUrban;')
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uMouth[' + W.mouths.value.length + '];\nuniform sampler2D uCut; uniform vec4 uCutBox;\nuniform sampler2D uNoise, uShore, uPark, uUrban; uniform vec4 uArea; uniform float uNight; varying vec3 vW; varying float vUpN; float gBump; float gUrban;')
       .replace('#include <map_fragment>', `
+        { vec2 cu = (vW.xz - uCutBox.xy) / uCutBox.zw; if (cu.x > 0.0 && cu.y > 0.0 && cu.x < 1.0 && cu.y < 1.0 && texture2D(uCut, cu).r > 0.5) discard; }
         for (int k = 0; k < ${W.mouths.value.length}; k++) { vec2 md = vW.xz - uMouth[k].xy; float al = dot(md, uMouth[k].zw), la = abs(dot(md, vec2(-uMouth[k].w, uMouth[k].z))); if (al > -1.2 && al < 13.0 && la < 2.5) discard; } // (the mouths of the tunnel)
         vec2 auv = (vW.xz - uArea.xy) / uArea.zw;
         vec2 tp = vW.xz + vW.y * vec2(1.3, 0.8);
@@ -238,7 +241,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   await onStage('city');
 
   buildRoads(W); await onStage('roads');
-  buildMarks(W); buildSquares(W); buildGalata(W); buildWalls(W); buildInfra(W); buildGreen(W); buildParking(W); await onStage('landmarks');
+  buildMarks(W); await buildTopkapi(W); buildSquares(W); buildGalata(W); buildWalls(W); buildInfra(W); buildGreen(W); buildParking(W); await onStage('landmarks');
   buildLife(W); await onStage('life'); buildShips(W, A); buildTransit(W); await onStage('ships');
   buildSigns(W); buildSignals(W); await onStage('signs');
   lampTex.needsUpdate = true;

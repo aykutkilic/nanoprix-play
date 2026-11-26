@@ -24,12 +24,13 @@ import { makePerson } from './person.js';
 import { t, touch } from './i18n.js';
 import { hm, darkAt, RATE } from '../shared/clock.js';
 import { esc } from './hud.js';
+import { Fuel } from './fuel.js';
 const DELAY = 0.11, wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 export class Game {
-  constructor({ view, net, hud, audio, fx, input, weather }) { Object.assign(this, { view, net, hud, audio, fx, input, weather }); this.w = {}; this.active = false; this.cars = new Map(); this.override = null; this.trip = new Trip(this); }
+  constructor({ view, net, hud, audio, fx, input, weather }) { Object.assign(this, { view, net, hud, audio, fx, input, weather }); this.w = {}; this.fuel = new Fuel(this); this.active = false; this.cars = new Map(); this.override = null; this.trip = new Trip(this); }
 
   // ---------------------------------------------------------------- beginnings
-  clear() { clearTimeout(this.finishRetry); clearTimeout(this.kt); this.outing = null; this.hints = null; this.hud.set('activity', ''); if (this.fly) this.fly.stop(true); if (this.nav) { this.nav.stop(); this.nav.hide(); } if (this.nextSign) this.nextSign.update(null); this.trip.clear(); if (this.cabin) this.cabin.leave(); this.view.ride(false); this.aboard = null; this.ferryNote = ''; this.view.aboard = false; if (this.view.world) this.view.world.shipTime = null;
+  clear() { if (this.fuel) this.fuel.stop(); clearTimeout(this.finishRetry); clearTimeout(this.kt); this.outing = null; this.hints = null; this.hud.set('activity', ''); if (this.fly) this.fly.stop(true); if (this.nav) { this.nav.stop(); this.nav.hide(); } if (this.nextSign) this.nextSign.update(null); this.trip.clear(); if (this.cabin) this.cabin.leave(); this.view.ride(false); this.aboard = null; this.ferryNote = ''; this.view.aboard = false; if (this.view.world) this.view.world.shipTime = null;
     for (const c of this.cars.values()) this.drop(c);
     if (this.view.world && this.active) this.view.world.A.stream.route(null); this.line0 = null; if (this.view.world && this.view.world.transit) { this.view.world.transit.hold = null; this.view.world.transit.on = true; this.view.world.transit.city = true; }
     this.cars.clear(); if (this.cv) this.cv.dispose(); this.cv = null; this.course = null; this.me = null; this.active = false;
@@ -116,6 +117,7 @@ export class Game {
         }
       }
       ctl.grip = w.grip; ctl.wind = w.wind > 0.01 && T > 0 ? gust(w, T, me.x, me.z) : null;
+      if (this.free) { this.fuel.limit(me, ctl); this.fuel.frame(dt, now, me, ctl, away); } // (the tank, the wallet, fines: fuel.js)
       this.ctl = ctl; me.braking = ctl.brake > 0.1; me.horn = inp.horn;
       if (inp.horn && now - (this.hornAt || 0) > 320) { this.hornAt = now; this.audio.horn(0.18, this.mine.car); }
       // slipstream

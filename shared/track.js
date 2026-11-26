@@ -56,6 +56,11 @@ export class Network {
 
   // The road under a point at height y (the highest within reach): where its
   // surface is, and how far inside its edge. null: nowhere near any.
+  // drivable ground that is no road: a car park, a filling station's forecourt – polygons at a height (client/parking.js)
+  addPads(list) { this.pcells ||= new Map(); for (const q of list) { const xs = q.q.map((p) => p[0]), zs = q.q.map((p) => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs), d = { ...q, x: (x0 + x1) / 2, z: (z0 + z1) / 2, r: 0, road: { id: `pad:${q.name || ''}`, name: q.name || '', style: 'lane', spur: true, pad: true, hw: 1, n: 2, p: [(x0 + x1) / 2, (z0 + z1) / 2, q.h, (x0 + x1) / 2 + 0.01, (z0 + z1) / 2, q.h], s: Float32Array.from([0, 0.01]), len: 0.01, bridge: new Uint8Array(2), tunnel: null, index: -1 } };
+    for (let a = Math.floor(x0 / 4); a <= Math.floor(x1 / 4); a++) for (let b = Math.floor(z0 / 4); b <= Math.floor(z1 / 4); b++) { const k = a * 8192 + b; let c = this.pcells.get(k); if (!c) this.pcells.set(k, (c = [])); c.push(d); } } }
+  // how far inside a pad (x, z) is, about y: [how far, the pad] or null
+  pad(x, z, y) { const L = this.pcells && this.pcells.get(Math.floor(x / 4) * 8192 + Math.floor(z / 4)); if (!L) return null; let best = null; for (const d of L) { if (Math.abs(d.h - y) > 1.2) continue; const q = d.q, n = q.length; let c = false, m = 1e9; for (let i = 0, j = n - 1; i < n; j = i++) { const [ax, az] = q[j], [bx, bz] = q[i]; if ((bz > z) !== (az > z) && x < ((ax - bx) * (z - bz)) / (az - bz) + bx) c = !c; const ex = bx - ax, ez = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez || 1))); m = Math.min(m, Math.hypot(x - ax - ex * t, z - az - ez * t)); } const inside = c ? m : -m; if (!best || inside > best[0]) best = [inside, d]; } return best; }
   at(x, z, y, only, out = {}) {
     let bestIn = -1e9, found = false, sh = 0, sw = 0;
     out.road = null; out.disc = null;
@@ -67,11 +72,13 @@ export class Network {
       const w = r.hw - d;
       if (w > 0 && dy > -0.8) { const k = w * w; sh += h * k; sw += k; } // (where roads overlap their heights blend)
     }, only);
-    if (!found) return null;
+    const pd = !only && this.pcells ? this.pad(x, z, y) : null;
+    if (!found) { if (!pd || pd[0] < -0.5) return null; const d = pd[1]; out.road = d.road; out.i = 0; out.t = 0; out.d = 0; out.h = d.h; out.inside = pd[0]; out.disc = { x: d.cx ?? d.x, z: d.cz ?? d.z, h: d.h, r: 0, pad: d }; out.s = 0; return out; }
     out.inside = out.road.hw - out.d;
     if (sw > 0) out.h = sh / sw;
     const ds = this.dcells.get(Math.floor(x / 4) * 8192 + Math.floor(z / 4));
     if (ds) for (const d of ds) { const D = Math.hypot(x - d.x, z - d.z); if (d.r - D > out.inside && Math.abs(d.h - y) < 1.2) { out.inside = d.r - D; out.disc = d; } }
+    if (pd && pd[0] > out.inside) { const d = pd[1]; out.inside = pd[0]; out.h = d.h; out.disc = { x: d.cx ?? d.x, z: d.cz ?? d.z, h: d.h, r: 0, pad: d }; }
     return out;
   }
 

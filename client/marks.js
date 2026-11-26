@@ -5,7 +5,6 @@ import * as THREE from './vendor/three.module.min.js';
 import { readMarks } from './assets.js';
 import { weathered } from './weather.js';
 import { handOver } from './gpu.js';
-import { REPLACES } from './topkapi.js';
 
 // per corner: the mean of the faces round its vertex that lie within the crease angle (left off now and then: there are many corners)
 function* creased(pos, idx, scale, cos = 0.8) {
@@ -36,7 +35,7 @@ export function buildMarks(W) {
           else if (vKind > 2.5) totalEmissiveRadiance += diffuseColor.rgb * uNight * 0.6; }`);
   };
   weathered(stone, { snow: 0.88, wet: 0.2, shine: 0.5 });
-  W.markStone = stone; W.marks = [];
+  W.marks = [];
   const empty = new THREE.BufferGeometry(); empty.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3)); empty.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 0);
   function* make(q) {
     const m = q.m, { pos: P, idx: X, col } = q.data, N = yield* creased(P, X, m.q), n = m.in, C = new Uint8Array(n * 4), I = new Int16Array(n * 4); yield;
@@ -46,12 +45,12 @@ export function buildMarks(W) {
   // made as one comes near, the nearest first, a little each frame; let go of when long out of sight
   const all = []; let job = null;
   W.updateMarks = (cam, far, ms = 1.6) => {
-    const t0 = performance.now(); let best = null; for (const q of all) { if (q.gone) continue; const d = Math.hypot(q.m.x - cam.x, q.m.z - cam.z) - q.m.r, see = d < Math.min(far * q.reach, q.max); q.o.visible = see && q.made; if (see) { q.off = 0; if (!q.made && q.data && (!best || d < best.d)) best = { d, q }; } else if (q.made) { q.off ||= t0; if (t0 - q.off > 15000) { q.o.geometry.dispose(); q.o.geometry = empty; q.made = false; } } }
+    const t0 = performance.now(); let best = null; for (const q of all) { const d = Math.hypot(q.m.x - cam.x, q.m.z - cam.z) - q.m.r, see = d < Math.min(far * q.reach, q.max); q.o.visible = see && q.made; if (see) { q.off = 0; if (!q.made && q.data && (!best || d < best.d)) best = { d, q }; } else if (q.made) { q.off ||= t0; if (t0 - q.off > 15000) { q.o.geometry.dispose(); q.o.geometry = empty; q.made = false; } } }
     let n = 0; while (performance.now() - t0 < ms) { if (!job) { if (!best || n) break; job = { q: best.q, it: make(best.q) }; } if (job.it.next().done) { job = null; n++; } } return job || best ? 1 : 0;
   };
   const again = W.remake; W.remake = () => { if (again) again(); job = null; for (const q of all) { q.o.geometry = empty; q.made = false; } };
   for (const m of L.items) {
-    const o = new THREE.Mesh(empty, stone); o.position.set(m.x, m.y, m.z); o.scale.setScalar(m.q); o.castShadow = o.receiveShadow = true; o.name = m.name; o.visible = false; const gone = REPLACES.has(m.id); if (!gone) W.still.add(o); all.push({ m, o, gone, made: false, data: null, off: 0, reach: m.top > 9 ? 9 : m.top > 4 || m.hero ? 2.2 : 1.12, max: m.top > 9 ? 1e9 : 90 + m.r * 130 + m.top * 60 });
+    const o = new THREE.Mesh(empty, stone); o.position.set(m.x, m.y, m.z); o.scale.setScalar(m.q); o.castShadow = o.receiveShadow = true; o.name = m.name; o.visible = false; W.still.add(o); all.push({ m, o, made: false, data: null, off: 0, reach: m.top > 9 ? 9 : m.top > 4 || m.hero ? 2.2 : 1.12, max: m.top > 9 ? 1e9 : 90 + m.r * 130 + m.top * 60 });
     W.marks.push({ ...m, obj: o });
     if (W.coast(m.x, m.z) < 10) W.light(m.x, m.z, Math.min(6, m.r * 0.6), 0.5);
   }

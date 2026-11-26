@@ -31,11 +31,19 @@ export function buildMarks(W) {
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nif (vKind > 1.5 && vKind < 2.5) metalnessFactor = 0.9;')
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         if (uNight > 0.0) {
-          if (vKind > 0.5 && vKind < 1.5) { vec3 c = floor(vP * 3.1); float r = fract(sin(dot(c, vec3(12.9898, 78.233, 37.719))) * 43758.5453); totalEmissiveRadiance += mix(vec3(1.0, 0.56, 0.20), vec3(1.0, 0.78, 0.46), r) * uNight * step(0.35, r) * 1.1; }
+          if (vKind > 0.5 && vKind < 1.5) {
+#ifdef HOLY
+            totalEmissiveRadiance += vec3(1.0, 0.64, 0.30) * uNight * 1.7; // (a place of prayer is lit within: every window of it, warm)
+#else
+            vec3 c = floor(vP * 3.1); float r = fract(sin(dot(c, vec3(12.9898, 78.233, 37.719))) * 43758.5453); totalEmissiveRadiance += mix(vec3(1.0, 0.56, 0.20), vec3(1.0, 0.78, 0.46), r) * uNight * step(0.35, r) * 1.1;
+#endif
+          }
           else if (vKind < 0.5) totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.66, 0.34) * uNight * (0.30 + 1.15 * exp(-max(vL.y, 0.0) * 0.28)) * (1.0 - 0.6 * abs(normalize(cross(dFdx(vP), dFdy(vP))).y));
           else if (vKind > 2.5) totalEmissiveRadiance += diffuseColor.rgb * uNight * 0.6; }`);
   };
-  weathered(stone, { snow: 0.88, wet: 0.2, shine: 0.5 });
+  // mosques, churches, synagogues: the same stone, their windows all lit at night
+  const holy = stone.clone(); holy.defines = { HOLY: '' }; holy.onBeforeCompile = stone.onBeforeCompile; const HOLY = /cami|mescid|kilise|church|sinagog|katedral/;
+  weathered(stone, { snow: 0.88, wet: 0.2, shine: 0.5 }); weathered(holy, { snow: 0.88, wet: 0.2, shine: 0.5 });
   W.markStone = stone; W.marks = [];
   const empty = new THREE.BufferGeometry(); empty.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3)); empty.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 0);
   function* make(q) {
@@ -51,7 +59,7 @@ export function buildMarks(W) {
   };
   const again = W.remake; W.remake = () => { if (again) again(); job = null; for (const q of all) { q.o.geometry = empty; q.made = false; } };
   for (const m of L.items) {
-    const o = new THREE.Mesh(empty, stone); o.position.set(m.x, m.y, m.z); o.scale.setScalar(m.q); o.castShadow = o.receiveShadow = true; o.name = m.name; o.visible = false; const gone = REPLACES.has(m.id); if (!gone) W.still.add(o); all.push({ m, o, gone, made: false, data: null, off: 0, reach: m.top > 9 ? 9 : m.top > 4 || m.hero ? 2.2 : 1.12, max: m.top > 9 ? 1e9 : 90 + m.r * 130 + m.top * 60 });
+    const o = new THREE.Mesh(empty, HOLY.test(m.id) ? holy : stone); o.position.set(m.x, m.y, m.z); o.scale.setScalar(m.q); o.castShadow = o.receiveShadow = true; o.name = m.name; o.visible = false; const gone = REPLACES.has(m.id); if (!gone) W.still.add(o); all.push({ m, o, gone, made: false, data: null, off: 0, reach: m.top > 9 ? 9 : m.top > 4 || m.hero ? 2.2 : 1.12, max: m.top > 9 ? 1e9 : 90 + m.r * 130 + m.top * 60 });
     W.marks.push({ ...m, obj: o });
     if (W.coast(m.x, m.z) < 10) W.light(m.x, m.z, Math.min(6, m.r * 0.6), 0.5);
   }

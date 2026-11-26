@@ -27,19 +27,19 @@ export function buildMarks(W) {
     s.uniforms.uNight = night;
     s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying float vKind; varying vec3 vL; varying vec3 vP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvKind = floor(color.a * 255.0 + 0.5); vL = (modelMatrix * vec4(position, 0.0)).xyz; vP = (modelMatrix * vec4(position, 1.0)).xyz;');
     s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight; varying float vKind; varying vec3 vL; varying vec3 vP;')
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (vKind > 0.5 && vKind < 1.5) roughnessFactor = 0.15; if (vKind > 1.5 && vKind < 2.5) roughnessFactor = 0.3;')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif ((vKind > 0.5 && vKind < 1.5) || vKind > 4.5) roughnessFactor = 0.15; if (vKind > 1.5 && vKind < 2.5) roughnessFactor = 0.3;')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nif (vKind > 1.5 && vKind < 2.5) metalnessFactor = 0.9;')
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         if (uNight > 0.0) {
-          if (vKind > 0.5 && vKind < 1.5) {
+          if ((vKind > 0.5 && vKind < 1.5) || vKind > 4.5) {
 #ifdef HOLY
             totalEmissiveRadiance += vec3(1.0, 0.64, 0.30) * uNight * 1.7; // (a place of prayer is lit within: every window of it, warm)
 #else
-            vec3 c = floor(vP * 3.1); float r = fract(sin(dot(c, vec3(12.9898, 78.233, 37.719))) * 43758.5453); totalEmissiveRadiance += mix(vec3(1.0, 0.56, 0.20), vec3(1.0, 0.78, 0.46), r) * uNight * step(0.35, r) * 1.1;
+            if (vKind > 4.5) totalEmissiveRadiance += mix(vec3(1.0, 0.56, 0.20), vec3(1.0, 0.80, 0.50), (vKind - 5.0) / 3.0) * uNight * 1.1; // (a window lit whole, or dark: client/marks.js make())
 #endif
           }
           else if (vKind < 0.5) totalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.66, 0.34) * uNight * (0.30 + 1.15 * exp(-max(vL.y, 0.0) * 0.28)) * (1.0 - 0.6 * abs(normalize(cross(dFdx(vP), dFdy(vP))).y));
-          else if (vKind > 2.5) totalEmissiveRadiance += diffuseColor.rgb * uNight * 0.6; }`);
+          else if (vKind > 2.5 && vKind < 3.5) totalEmissiveRadiance += diffuseColor.rgb * uNight * 0.6; }`);
   };
   // mosques, churches, synagogues: the same stone, their windows all lit at night
   const holy = stone.clone(); holy.defines = { HOLY: '' }; holy.onBeforeCompile = stone.onBeforeCompile; const HOLY = /cami|mescid|kilise|church|sinagog|katedral/;
@@ -49,6 +49,12 @@ export function buildMarks(W) {
   function* make(q) {
     const m = q.m, { pos: P, idx: X, col } = q.data, N = yield* creased(P, X, m.q), n = m.in, C = new Uint8Array(n * 4), I = new Int16Array(n * 4); yield;
     for (let k = 0; k < n; k++) { const v = X[k], i = v * 4; C[k * 4] = col[i]; C[k * 4 + 1] = col[i + 1]; C[k * 4 + 2] = col[i + 2]; C[k * 4 + 3] = col[i + 3]; I[k * 4] = P[v * 3]; I[k * 4 + 1] = P[v * 3 + 1]; I[k * 4 + 2] = P[v * 3 + 2]; if ((k & 8191) === 8191) yield; } // (colours already linear, as glTF's are; the fourth: what kind of thing it is)
+    // the windows lit by night, each whole: the glass's panes (what of it hangs together), a large sheet of it by cells – the fourth then 5…8, lit and its tint
+    { const T = n / 3, up = new Int32Array(T).fill(-1), first = new Map(), find = (a) => { while (up[a] >= 0 && up[up[a]] >= 0) { up[a] = up[up[a]]; a = up[a]; } return up[a] >= 0 ? up[a] : a; }; let any = false;
+      for (let t = 0; t < T; t++) { if (C[t * 12 + 3] !== 1) continue; any = true; for (let c = 0; c < 3; c++) { const v = X[t * 3 + c], o = first.get(v); if (o === undefined) first.set(v, t); else { const a = find(t), b = find(o); if (a !== b) up[a] = b; } } } if (any) { yield;
+        const box = new Map(), q = m.q; for (let t = 0; t < T; t++) { if (C[t * 12 + 3] !== 1) continue; const r = find(t); let b = box.get(r); if (!b) box.set(r, (b = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9])); for (let c = 0; c < 3; c++) { const v = X[t * 3 + c]; for (let a = 0; a < 3; a++) { b[a] = Math.min(b[a], P[v * 3 + a]); b[a + 3] = Math.max(b[a + 3], P[v * 3 + a]); } } }
+        const h = (a, b, c) => { const s = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453; return s - Math.floor(s); };
+        for (let t = 0; t < T; t++) { if (C[t * 12 + 3] !== 1) continue; const r = find(t), b = box.get(r), big = Math.hypot(b[3] - b[0], b[4] - b[1], b[5] - b[2]) * q > 1.1; let key; if (big) { let cx = 0, cy = 0, cz = 0; for (let c = 0; c < 3; c++) { const v = X[t * 3 + c]; cx += P[v * 3]; cy += P[v * 3 + 1]; cz += P[v * 3 + 2]; } const s = 0.55 / q; key = [Math.floor(cx / 3 / s), Math.floor(cy / 3 / s), Math.floor(cz / 3 / s)]; } else key = [b[0] + b[3], b[1] + b[4], b[2] + b[5]]; const g = h(key[0] * 0.013, key[1] * 0.017, key[2] * 0.011 + m.x); const lit = g > 0.4 ? 5 + Math.floor(((g - 0.4) / 0.6) * 3.999) : 1; for (let c = 0; c < 3; c++) C[(t * 3 + c) * 4 + 3] = lit; } } }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(I, 4)); g.setAttribute('normal', new THREE.BufferAttribute(N, 4, true)); g.setAttribute('color', new THREE.BufferAttribute(C, 4, true)); g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, (m.top * 0.5) / m.q, 0), Math.hypot(m.r, m.top * 0.55) / m.q * 1.15); yield; q.o.geometry = handOver(g); q.made = true;
   }
   // made as one comes near, the nearest first, a little each frame; let go of when long out of sight

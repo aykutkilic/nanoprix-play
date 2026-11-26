@@ -7,6 +7,7 @@ import { surf, weathered, cutAway, NONE } from './weather.js';
 import { buildTube } from './tube.js';
 import { pack, Batch, merge, normals } from './gpu.js';
 import { inSetts, inCobbles } from './squares.js';
+import { frameOf } from './parking.js';
 
 // how far above its line a road is drawn (so that none flickers through another)
 export const lift = (r) => (r.spur ? -0.003 : 0.004) + RANK[r.style] * 0.007 + (r.index % 5) * 0.0012;
@@ -80,8 +81,11 @@ export function buildRoads(W) {
   // does the pavement beside an edge lie on another road? (then there is only the kerb); does the edge stand over one?
   const crowded = (x, z, nx, nz, y, self, w) => { for (const o of w) { let c = false; const px = x + nx * o, pz = z + nz * o; net.around(px, pz, (r, i, t, d, h) => { if (r !== self && d < r.hw && Math.abs(h - y) < 0.9) c = true; }); if (c) return true; } return false; };
   const above = (x, z, y, self) => { let c = false; net.around(x, z, (r, i, t, d, h) => { if (r !== self && d < r.hw + 0.7 && h < y - 0.85 && h > y - 4) c = true; }); return c; };
+  // where a filling station's way in or out crosses the pavement the kerb is let down (client/parking.js lays the apron over it)
+  const drops = ((W.A.parking && W.A.parking.stations) || []).flatMap((s) => { const f = frameOf(s); return [-1.2, 1.2].map((a) => [f.at(a, -0.8), f.at(a, -8)]); });
+  const dropped = (x, z) => drops.some(([[ax, az], [bx, bz]]) => { const ex = bx - ax, ez = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez))); return Math.hypot(x - ax - ex * t, z - az - ez * t) < 0.62; });
   const profile = (p, nx, nz, y, r, side, bridge, tight) => { // nx, nz point outwards; returns the profile's points
-    const at = (o, up) => [p[0] + nx * o, y + up, p[1] + nz * o], { H, top, walk } = kerbOf(r.style, bridge);
+    const at = (o, up) => [p[0] + nx * o, y + up, p[1] + nz * o], low = !bridge && r.style !== 'motorway' && dropped(p[0] + nx * 0.3, p[1] + nz * 0.3), { H, top, walk } = low ? { H: 0.025, top: 0.02, walk: 0.55 } : kerbOf(r.style, bridge);
     if (tight) { const a = [at(0, -0.02), at(0.02, H), at(0.11, H), at(KERB, -0.3)]; return bridge ? [...a, at(-r.hw * 0.4, -0.42)] : a; }
     const pts = [at(0, -0.02), at(0.02, H), at(0.11, H), at(KERB, bridge ? 0.05 : top), at(KERB + walk, top)];
     const g = height(p[0] + nx * (walk + 0.2), p[1] + nz * (walk + 0.2));

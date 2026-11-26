@@ -18,6 +18,8 @@ import { buildInfra } from './infra.js';
 import { buildGreen } from './green.js';
 import { buildParking } from './parking.js';
 import { buildBufe } from './bufe.js';
+import { buildMalls } from './mall.js';
+import { buildCampus } from './campus.js';
 import { buildTopkapi } from './topkapi.js';
 import { buildBeacons } from './beacons.js';
 import { pack, Keeper, Still, merge } from './gpu.js';
@@ -246,7 +248,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   await onStage('city');
 
   buildRoads(W); await onStage('roads');
-  buildMarks(W); await buildTopkapi(W); buildSquares(W); buildGalata(W); buildWalls(W); buildInfra(W); buildGreen(W); buildParking(W); buildBufe(W); await onStage('landmarks');
+  buildMarks(W); await buildTopkapi(W); buildSquares(W); buildGalata(W); buildWalls(W); buildInfra(W); buildGreen(W); buildParking(W); buildBufe(W); buildMalls(W); buildCampus(W); await onStage('landmarks');
   buildLife(W); await onStage('life'); buildShips(W, A); buildTransit(W); buildStops(W); await onStage('ships');
   buildSigns(W); buildSignals(W); await onStage('signs');
   lampTex.needsUpdate = true;

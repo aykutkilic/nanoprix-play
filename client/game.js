@@ -142,7 +142,7 @@ export class Game {
       if (this.stats && T > 0 && !this.finished) this.stats.sample(this.myId, T, me.prog, me.speed);
       if (this.course && !this.finished && T > 0) this.laps(T, now);
       if (now - this.sent > 33 && !this.watching) { this.sent = now; me.finished = !!this.finished; this.link.sendBinary(encodePose(away && onFoot ? { ...onFoot, foot: true } : me, this.msg.no, T)); }
-      if (!fly) this.audio.drive(me, ctl.gas);
+      if (!fly) this.audio.drive(me, ctl.gas, away);
     }
     if (fly) this.audio.air(fly.speed, me ? Math.hypot(fly.x - me.x, fly.y - me.y, fly.z - me.z) : 1e4);
     for (const o of others) { this.marks(o.st, o.id % 997, dt); if (o.st.boosting && Math.random() < 0.6) this.fx.flame(o.st); if (o.st.horn && now - (o.hornAt || 0) > 340) { o.hornAt = now; if (me) this.audio.horn(0.18 / (1 + Math.hypot(o.st.x - me.x, o.st.z - me.z) / 6), o.car); } }
@@ -153,7 +153,7 @@ export class Game {
     const L = this.override !== null ? this.override : this.settings.light === 'night' ? 1 : this.settings.light !== 'cycle' ? 0 : this.free && this.msg.clock ? darkAt(this.msg.clock.at + Math.max(0, T) * RATE) : Math.min(1, Math.max(0, 0.5 - 0.85 * Math.cos(((T + 20) / 150) * Math.PI * 2)));
     if (Math.abs(V.night - L) > 0.001) V.applyNight(Math.abs(L - V.night) < dt * 0.7 ? L : V.night + Math.sign(L - V.night) * dt * 0.7); setHeadlights(V.night);
     const focus = fly || onFoot || me || this.leader(); if (!focus) return;
-    { const u = !fly && !this.trip.away && this.net.under(focus) === 2; this.underK = me ? this.underK : u ? 1 : 0; V.setUnder(u, focus); V.below(fly || this.trip.mode === 'car' ? 0 : this.trip.hall ? 1 : this.trip.pass ? Math.max(0, Math.min(1, (this.trip.passed - 1.4) / Math.max(1, this.trip.pass.entry.run - 1.4))) : this.trip.deep ? 0.6 : 0); V.world.deepNow = !fly && V.deep > 0.9; this.inside(dt, now, T, inp, fly, u); V.aboard = !!this.aboard && !!me; if (this.underK > 0.01) { const k = 1 - this.underK; w.fog *= k; w.rain *= k; w.snowing *= k; w.flash *= k; } }
+    { const u = !fly && !this.trip.away && this.net.under(focus) === 2; this.underK = me ? this.underK : u ? 1 : 0; V.setUnder(u, focus); V.below(fly || this.trip.mode === 'car' ? 0 : this.trip.hall || this.trip.mall ? 1 : this.trip.pass ? Math.max(0, Math.min(1, (this.trip.passed - 1.4) / Math.max(1, this.trip.pass.entry.run - 1.4))) : this.trip.deep ? 0.6 : 0); V.world.deepNow = !fly && V.deep > 0.9; this.inside(dt, now, T, inp, fly, u); V.aboard = !!this.aboard && !!me; if (this.underK > 0.01) { const k = 1 - this.underK; w.fog *= k; w.rain *= k; w.snowing *= k; w.flash *= k; } }
     this.weather.update(dt, now, w, focus, V.night, [...(me ? [me] : []), ...others.map((o) => o.st)].filter((c) => this.underK < 0.5 && Math.abs(c.x - focus.x) + Math.abs(c.z - focus.z) < 30)); V.setWeather(w, this.weather.flash); setHeadlights(Math.max(V.night, Math.min(1, w.fog * 60 + w.rain * 0.5 + w.snowing * 0.5)));
     V.world.setLights(this.free ? T : null, now); V.world.shipTime = T;
     if (this.cv) { this.cv.night = V.night; this.cv.update(now, T, focus); if (this.cv.crowd) this.audio.crowd(this.cv.crowd.update(now, focus, w, V.night, this.fx)); }

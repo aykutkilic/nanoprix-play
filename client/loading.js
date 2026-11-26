@@ -6,7 +6,7 @@
 import { MINI as M } from './mini.js';
 import { t } from './i18n.js';
 // what is in which file, and which stage of the building makes it
-const PARTS = { land: [['terrain.bin', 'map.json'], 'terrain'], sea: [['ships.bin', 'ports.json'], 'sea'], city: [['urban.bin'], 'city'], roads: [['roads.json', 'streets.json', 'transit.json', 'lines.json', 'entries.json', 'squares.json', 'squares.bin', 'walls.json', 'infra.json', 'green.json', 'parking.json', 'bufe.json'], 'roads'], marks: [['landmarks.json', 'tiles.json'], 'landmarks'], ships: [['ports.json', 'ships.bin'], 'ships'], signs: [['streets.json'], 'signs'] };
+const PARTS = { land: [['terrain.bin', 'map.json'], 'terrain'], sea: [['ships.bin', 'ports.json'], 'sea'], city: [['urban.bin'], 'city'], roads: [['roads.json', 'streets.json', 'transit.json', 'lines.json', 'entries.json', 'squares.json', 'squares.bin', 'walls.json', 'infra.json', 'green.json', 'parking.json', 'bufe.json', 'campus.json'], 'roads'], marks: [['landmarks.json', 'tiles.json'], 'landmarks'], ships: [['ports.json', 'ships.bin'], 'ships'], signs: [['streets.json'], 'signs'] };
 const ORDER = ['land', 'sea', 'city', 'roads', 'marks', 'ships', 'signs'], ease = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
 export class Loading {
   constructor(host) {

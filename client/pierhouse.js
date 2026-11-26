@@ -5,8 +5,8 @@
 import * as THREE from './vendor/three.module.min.js';
 import { kit, box, cyl, hip } from './squares.js';
 
-export const UPSTAIRS = { Eminönü: 'kitap', Karaköy: 'kitap', Beşiktaş: 'kutup' };
-const SIGN = { kitap: ['İSTANBUL KİTAPÇISI · KAFE', '#b3122b'], kutup: ['İBB İSKELE KÜTÜPHANESİ · KAFE', '#0b4ea2'] };
+export const UPSTAIRS = { Eminönü: 'kitap', Karaköy: 'kitap', Beşiktaş: 'kutup', Bostancı: 'adalar', 'Bostancı Deniz Otobüsü': 'ido' }; // (Bostancı's: the Şehir Hatları pier for the Islands, a café above; İDO's sea-bus terminal, its lounge above)
+const SIGN = { kitap: ['İSTANBUL KİTAPÇISI · KAFE', '#b3122b'], kutup: ['İBB İSKELE KÜTÜPHANESİ · KAFE', '#0b4ea2'], adalar: ['BOSTANCI · ADALAR İSKELESİ · KAFE', '#123a66'], ido: ['İDO · BOSTANCI DENİZ OTOBÜSÜ', '#0a4f9c'] };
 export const HOUSE = { W: 2.6, D: 1.3, F: 0.56, U: 0.52 }; // how wide (along the shore), deep (towards the water: +z), high the hall below, high the floor above
 // the house itself, from the ground: cream walls, the glass of the hall below, a white band between the floors, corner piers above, a cornice, a tiled hip roof, the terrace on the water's side
 export function houseGeometry() {
@@ -27,7 +27,7 @@ function upstairs(kind, side) {
   const wall = g.createLinearGradient(0, 0, 0, 192); wall.addColorStop(0, '#f3dfb8'); wall.addColorStop(1, '#c9a77a'); g.fillStyle = wall; g.fillRect(0, 0, Wd, 192);
   const R = (() => { let s = (kind === 'kitap' ? 7 : 11) + (side ? 3 : 0); return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296); })(), SP = ['#8c1f2d', '#1c3f94', '#2f8f5b', '#e0b21b', '#5c3a52', '#d6d2c8', '#b46a2c', '#16181c', '#3f6e8c', '#c8242a'];
   // the shelves, along the back
-  const shelfTo = side ? Wd : Wd * (kind === 'kutup' ? 0.62 : 0.48); for (let x = 12; x < shelfTo - 40; x += 118) { g.fillStyle = '#5a3a22'; g.fillRect(x, 26, 108, 150); for (let r = 0; r < 4; r++) { const y = 34 + r * 36; g.fillStyle = '#3b2616'; g.fillRect(x + 4, y + 28, 100, 5); for (let bx = x + 6; bx < x + 100; ) { const w = 4 + R() * 7, h = 18 + R() * 9; g.fillStyle = SP[Math.floor(R() * SP.length)]; g.fillRect(bx, y + 28 - h, w, h); bx += w + 1; } } }
+  const books = kind === 'kitap' || kind === 'kutup', shelfTo = !books ? 0 : side ? Wd : Wd * (kind === 'kutup' ? 0.62 : 0.48); for (let x = 12; x < shelfTo - 40; x += 118) { g.fillStyle = '#5a3a22'; g.fillRect(x, 26, 108, 150); for (let r = 0; r < 4; r++) { const y = 34 + r * 36; g.fillStyle = '#3b2616'; g.fillRect(x + 4, y + 28, 100, 5); for (let bx = x + 6; bx < x + 100; ) { const w = 4 + R() * 7, h = 18 + R() * 9; g.fillStyle = SP[Math.floor(R() * SP.length)]; g.fillRect(bx, y + 28 - h, w, h); bx += w + 1; } } }
   if (!side) { // the counter, tables and people at them
     const c0 = shelfTo + 20; g.fillStyle = '#2d2420'; g.fillRect(c0, 118, 150, 58); g.fillStyle = '#e9e2d4'; g.fillRect(c0, 112, 150, 8); g.fillStyle = '#b9b2a4'; g.fillRect(c0 + 20, 92, 34, 20);
     for (let k = 0; k < 4; k++) { const x = c0 + 200 + k * 92; if (x > Wd - 60) break; g.fillStyle = '#f2efe8'; g.beginPath(); g.ellipse(x, 140, 30, 7, 0, 0, Math.PI * 2); g.fill(); g.fillStyle = '#3a3a3a'; g.fillRect(x - 2, 140, 4, 36); for (const s of [-1, 1]) if (R() < 0.75) { const px = x + s * 34, col = SP[Math.floor(R() * SP.length)]; g.fillStyle = col; g.beginPath(); g.ellipse(px, 128, 13, 22, 0, 0, Math.PI * 2); g.fill(); g.fillStyle = '#d8a47c'; g.beginPath(); g.arc(px, 98, 10, 0, Math.PI * 2); g.fill(); g.fillStyle = '#2a211a'; g.beginPath(); g.arc(px, 94, 10, Math.PI, Math.PI * 2); g.fill(); } }

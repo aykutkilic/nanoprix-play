@@ -3,6 +3,8 @@
 // own level – the union of them – so junctions need no special case, and a
 // bridge and the road under it are told apart by height.
 
+const NO_DISCS = Object.freeze([]);
+
 export class Network {
   constructor(data) {
     this.streets = null;
@@ -34,6 +36,9 @@ export class Network {
     for (const d of this.discs) { if (!d.hub) continue; const E = []; for (const r of [...this.main, ...this.spurs]) { const n = r.n, P = r.p; for (const e of [0, n - 1]) { if (Math.hypot(P[e * 3] - d.x, P[e * 3 + 1] - d.z) > d.r + 0.8 || Math.abs(P[e * 3 + 2] - d.h) > 1.2) continue; const s = e ? -1 : 1; let i = e; while (i + s >= 0 && i + s < n && Math.hypot(P[i * 3] - d.x, P[i * 3 + 1] - d.z) < d.r) i += s; const j = Math.max(0, Math.min(n - 1, i - s)), dx = P[i * 3] - P[j * 3], dz = P[i * 3 + 1] - P[j * 3 + 1], l = Math.hypot(dx, dz) || 1, w = r.hw + 0.05; E.push([P[i * 3] - (dz / l) * w, P[i * 3 + 1] + (dx / l) * w], [P[i * 3] + (dz / l) * w, P[i * 3 + 1] - (dx / l) * w]); } }
       if (E.length < 4) continue; const S = [...E].sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = []; for (const p of S) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); } for (const p of S.reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); } const H = [...lo.slice(0, -1), ...up.slice(0, -1)];
       if (H.length < 3) continue; let inside = true; for (let k = 0; k < H.length; k++) { const a = H[k], b = H[(k + 1) % H.length]; if (cr(a, b, [d.x, d.z]) <= 0.1) inside = false; } if (inside) { const span = (a, b) => { let t = Math.atan2(b[0] - d.x, b[1] - d.z) - Math.atan2(a[0] - d.x, a[1] - d.z); t = Math.abs(Math.atan2(Math.sin(t), Math.cos(t))); return t; }; const cut = []; for (let k = 0; k < H.length; k++) { const a = H[k], b = H[(k + 1) % H.length]; if (span(a, b) <= 2.0) continue; let used = false; for (let t = 0.15; t < 0.9 && !used; t += 0.15) { const mx = a[0] + (b[0] - a[0]) * t, mz = a[1] + (b[1] - a[1]) * t, ox = mx - d.x, oz = mz - d.z, ol = Math.hypot(ox, oz) || 1; for (let f = 0.45; f <= 1.05 && !used; f += 0.15) { const px = mx + (ox / ol) * (d.r - ol) * f, pz = mz + (oz / ol) * (d.r - ol) * f; this.around(px, pz, (r, i, tt, D, h) => { if (D < r.hw - 0.1 && Math.abs(h - d.h) < 1.5) used = true; }); } } if (!used) cut.push([a, b]); } if (cut.length) d.poly = cut; } } /* (and not where a road comes in there after all) */ // (only across the side where no road goes: between roads it stays round, for who cuts the corner)
+  }
+  discsAt(x, z) {
+    return this.dcells?.get(Math.floor(x / 4) * 8192 + Math.floor(z / 4)) || NO_DISCS;
   }
   // how far within a junction a place is (its hull's, or its circle's)
   discIn(d, x, z) { const D = d.r - Math.hypot(x - d.x, z - d.z); if (!d.poly) return D; let m = D; for (const [a, b] of d.poly) { const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; m = Math.min(m, ((b[0] - a[0]) * (z - a[1]) - (b[1] - a[1]) * (x - a[0])) / l); } return m; }
@@ -84,8 +89,8 @@ export class Network {
     if (!found) { if (!pd || pd[0] < -0.5) return null; const d = pd[1]; out.road = d.road; out.i = 0; out.t = 0; out.d = 0; out.h = d.h; out.inside = pd[0]; out.disc = { x: d.cx ?? d.x, z: d.cz ?? d.z, h: d.h, r: 0, pad: d }; out.s = 0; return out; }
     out.inside = out.road.hw - out.d;
     if (sw > 0) out.h = sh / sw;
-    const ds = this.dcells.get(Math.floor(x / 4) * 8192 + Math.floor(z / 4));
-    if (ds) for (const d of ds) { const I = d.r - Math.hypot(x - d.x, z - d.z); if (I > out.inside && Math.abs(d.h - y) < 1.2) { out.inside = I; out.disc = d; } } // (round for who drives: the cut shape, discR, is only how it is drawn)
+    const ds = this.discsAt(x, z);
+    for (const d of ds) { const I = d.r - Math.hypot(x - d.x, z - d.z); if (I > out.inside && Math.abs(d.h - y) < 1.2) { out.inside = I; out.disc = d; } } // (round for who drives: the cut shape, discR, is only how it is drawn)
     if (pd && pd[0] > out.inside) { const d = pd[1]; out.inside = pd[0]; out.h = d.h; out.disc = { x: d.cx ?? d.x, z: d.cz ?? d.z, h: d.h, r: 0, pad: d }; }
     return out;
   }

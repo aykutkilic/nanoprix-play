@@ -386,15 +386,15 @@ export class Post {
 
 // Resolution is the last thing to go: text has to stay sharp. Slower machines
 // first lose antialiasing samples and shadow detail, then ambient occlusion
-// and bloom, and only then pixels – never below one per CSS pixel.
+// and bloom, and only then pixels. Large displays also obey the 3D pixel budget.
 export const QUALITY = {
   high: { post: true, samples: 4, dpr: 2, pixels: 4.4e6, shadow: 4096, text: 440 },
   medium: { post: true, samples: 2, dpr: 2, pixels: 3.2e6, shadow: 2048, text: 400 },
-  low: { post: false, samples: 0, dpr: 1.5, pixels: 4e6, shadow: 2048, text: 320 },
+  low: { post: false, samples: 0, dpr: 1, pixels: 2e6, shadow: 2048, text: 320 },
 };
 export const STEPS = ['high', 'medium', 'low'];
 export function pixelRatio(q, w, h, device = devicePixelRatio) {
-  return Math.max(Math.min(device, 1), Math.min(device, q.dpr, Math.sqrt(q.pixels / Math.max(1, w * h))));
+  return Math.min(device, q.dpr, Math.sqrt(q.pixels / Math.max(1, w * h)));
 }
 const FORCED = () => { const q = new URLSearchParams(location.search).get('gfx'); return QUALITY[q] ? q : ''; };
 const store = { get() { try { return localStorage.getItem('nanoprix.gfx') || 'auto'; } catch { return 'auto'; } }, set(v) { try { localStorage.setItem('nanoprix.gfx', v); } catch { /* */ } } };

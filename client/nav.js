@@ -8,11 +8,31 @@ import { putOn } from '../shared/car.js';
 import { esc } from './hud.js';
 const ICON = ['📍', '🚉', '🏥', '🏫', '🕌', '🏛', '🏨', '🍽', '🛍', '🌳', '🏢', '📌'];
 export class Nav {
-  constructor(game, el) { this.game = game; this.el = el; this.way = null; this.goal = null; this.list = []; this.sel = 0; this.open = false; this.ready = null; el.addEventListener('click', (e) => { const li = e.target.closest('li'); if (li) this.pick(+li.dataset.i); else if (e.target.closest('[data-x]')) { this.stop(); this.hide(); } else if (e.target === el) this.hide(); }); el.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') this.hide(); else if (e.key === 'Enter') this.pick(this.sel); else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); this.sel = Math.max(0, Math.min(this.list.length - 1, this.sel + (e.key === 'ArrowDown' ? 1 : -1))); this.rows(); } }); el.addEventListener('input', () => this.look()); }
+  constructor(game, el) { this.game = game; this.el = el; this.way = null; this.goal = null; this.list = []; this.sel = 0; this.open = false; this.ready = null; el.addEventListener('click', (e) => { if (e.target.closest('[data-retry]')) { this.loadPlaces(); return; } const li = e.target.closest('li[data-i]'); if (li) this.pick(+li.dataset.i); else if (e.target.closest('[data-x]')) { this.stop(); this.hide(); } else if (e.target === el) this.hide(); }); el.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') this.hide(); else if (e.key === 'Enter' && e.target.tagName === 'INPUT') this.pick(this.sel); else if (this.list.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); this.sel = Math.max(0, Math.min(this.list.length - 1, this.sel + (e.key === 'ArrowDown' ? 1 : -1))); this.rows(); } }); el.addEventListener('input', () => this.look()); }
   get can() { const G = this.game; return G.active && G.free && G.mine; }
   async show(e) {
     if (!this.can) return; if (e && e.preventDefault) e.preventDefault(); this.open = true; this.game.input.keys.clear(); this.el.hidden = false; this.el.innerHTML = `<div class="find"><input type="text" placeholder="${t('findWhere')}" autocomplete="off" spellcheck="false" maxlength="80"><ul></ul>${this.way ? `<button data-x>✕ ${t('navStop')}</button>` : ''}<p>${t('findHint')}</p></div>`; const inp = this.el.querySelector('input'); inp.focus(); this.list = [];
-    this.ready ||= fetch(new URL('../assets/places.json', import.meta.url)).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then((d) => { this.places = new Places(d); }).catch(() => { this.ready = null; }); if (!this.places) { this.el.querySelector('ul').innerHTML = `<li>${t('findLoading')}</li>`; await this.ready; if (this.open) this.look(); }
+    await this.loadPlaces();
+  }
+  async loadPlaces() {
+    if (this.places) { this.look(); return; }
+    const panel = this.el.querySelector('.find');
+    panel.querySelector('ul').innerHTML = `<li role="status">${t('findLoading')}</li>`;
+    panel.querySelector('input').focus();
+    this.ready ||= fetch(new URL('../assets/places.json', import.meta.url))
+      .then(response => {
+        if (!response.ok) throw new Error(String(response.status));
+        return response.json();
+      })
+      .then(data => { this.places = new Places(data); })
+      .finally(() => { this.ready = null; });
+    try {
+      await this.ready;
+      if (panel.isConnected) this.look();
+    } catch {
+      if (panel.isConnected) panel.querySelector('ul').innerHTML =
+        `<li><span role="alert">${t('findError')}</span> <button data-retry>${t('retryLoad')}</button></li>`;
+    }
   }
   hide() { this.open = false; this.el.hidden = true; this.el.innerHTML = ''; if (document.activeElement) document.activeElement.blur(); }
   look() { const i = this.el.querySelector('input'); if (!i || !this.places) return; this.list = this.places.find(i.value, this.game.me, 8); this.sel = 0; this.rows(i.value); }

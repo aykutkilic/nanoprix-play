@@ -44,7 +44,21 @@ export class View {
     if (gfxChoice() === 'auto' && this.level !== 'low') this.setQuality(this.level === 'high' ? 'medium' : 'low'); else this.resize();
     this.light(); this.lost = false; if (this.onRestored) this.onRestored();
   }
-  setQuality(level) { this.level = level; this.quality = QUALITY[level]; const n = level === 'low' ? 1024 : level === 'medium' ? 2048 : 3072; this.sun.shadow.mapSize.set(n, n); if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); this.sun.shadow.map = null; } this.far = level === 'low' ? 230 : level === 'medium' ? 340 : 460; this.resize(); }
+  setQuality(level) {
+    this.level = level;
+    this.quality = QUALITY[level];
+    this.renderer.shadowMap.autoUpdate = level !== 'low';
+    this.shadowFrames = 0;
+    this.shadowAtMs = -Infinity;
+    const shadowSize = level === 'low' ? 1024 : level === 'medium' ? 2048 : 3072;
+    this.sun.shadow.mapSize.set(shadowSize, shadowSize);
+    if (this.sun.shadow.map) {
+      this.sun.shadow.map.dispose();
+      this.sun.shadow.map = null;
+    }
+    this.far = level === 'low' ? 230 : level === 'medium' ? 340 : 460;
+    this.resize();
+  }
   chooseQuality(v) { setGfxChoice(v); const q = startQuality(); this.watch = q.fixed ? null : new FrameWatch(q.level, (l) => this.setQuality(l)); this.setQuality(q.level); }
   get gfx() { return gfxChoice(); }
   resize() {
@@ -160,6 +174,16 @@ export class View {
     this.sky.position.copy(this.camera.position); this.sky.material.uniforms.uTime.value = now / 1000;
     if (this.world) { const f = Math.min(this.far, this.camera === this.ortho ? 1e3 : 2.9 / this.scene.fog.density); this.world.update(dt, now, this.look || this.camera.position, f); }
     if (this.cabin && this.cabin.mirror && this.camera === this.persp) this.cabin.mirror.render(this, this.level === 'high' ? 2 : this.level === 'medium' ? 3 : 4);
+    // On Low, reuse the sun's map on alternate frames. Refresh immediately after
+    // a long gap or a quality change so the first frame has a valid shadow.
+    if (this.level === 'low') {
+      this.shadowFrames++;
+      if (this.shadowFrames >= 2 || now - this.shadowAtMs > 120) {
+        this.renderer.shadowMap.needsUpdate = true;
+        this.shadowFrames = 0;
+        this.shadowAtMs = now;
+      }
+    }
     // from a hall below only what is of it (marked userData.below: the hall, its trains, the ways down, who walks there) and the lights: the street over a shallow one – ground, sea, roads, houses, cars – may reach down into it
     const hid = []; if (this.world && this.world.deepNow) for (const o of this.scene.children) if (o.visible && !o.isLight && !o.userData.below) { o.visible = false; hid.push(o); }
     if (this.quality.post) this.post.render(this.scene, this.camera); else { this.renderer.setRenderTarget(null); this.renderer.render(this.scene, this.camera); }

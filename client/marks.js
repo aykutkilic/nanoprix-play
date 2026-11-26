@@ -65,7 +65,7 @@ export function buildMarks(W) {
   };
   const again = W.remake; W.remake = () => { if (again) again(); job = null; for (const q of all) { q.o.geometry = empty; q.made = false; } };
   for (const m of L.items) {
-    const o = new THREE.Mesh(empty, HOLY.test(m.id) ? holy : stone); o.position.set(m.x, m.y, m.z); o.scale.setScalar(m.q); o.castShadow = o.receiveShadow = true; o.name = m.name; o.visible = false; const gone = REPLACES.has(m.id); if (!gone) W.still.add(o); all.push({ m, o, gone, made: false, data: null, off: 0, reach: m.top > 9 ? 9 : m.top > 4 || m.hero ? 2.2 : 1.12, max: m.top > 9 ? 1e9 : 90 + m.r * 130 + m.top * 60 });
+    const o = new THREE.Mesh(empty, HOLY.test(m.id) ? holy : stone); o.position.set(m.x, m.y, m.z); o.scale.setScalar(m.q); o.castShadow = o.receiveShadow = true; o.name = m.name; o.visible = false; const gone = !!A.topkapi && REPLACES.has(m.id); if (!gone) W.still.add(o); all.push({ m, o, gone, made: false, data: null, off: 0, reach: m.top > 9 ? 9 : m.top > 4 || m.hero ? 2.2 : 1.12, max: m.top > 9 ? 1e9 : 90 + m.r * 130 + m.top * 60 });
     W.marks.push({ ...m, obj: o });
     if (W.coast(m.x, m.z) < 10) W.light(m.x, m.z, Math.min(6, m.r * 0.6), 0.5);
   }

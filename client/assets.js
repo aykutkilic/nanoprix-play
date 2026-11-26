@@ -6,16 +6,31 @@ const BASE = new URL('../assets/', import.meta.url);
 async function bytes(n, on) { const r = await fetch(new URL(n, BASE)); if (!r.ok) throw new Error(`${n}: ${r.status}`); return r.body.pipeThrough(new TransformStream({ transform(c, k) { on(n, c.byteLength); k.enqueue(c); } })); }
 const json = async (n, on) => JSON.parse(await new Response(await bytes(n, on)).text());
 const gunzip = async (n, on) => new Response((await bytes(n, on)).pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+export async function loadScenery(name) {
+  const response = await fetch(new URL(name + '.json', BASE), { priority: 'low' });
+  if (!response.ok) throw new Error(name + ': ' + response.status);
+  return response.json();
+}
 export async function loadAssets(on = () => {}) {
-  const [roads, streets, map, marks, tb, ub, index, ports, shipsBin, transit, lines, entries, squares, squaresBin, walls, infra, green, parking, bufe, campus] = await Promise.all([json('roads.json', on), json('streets.json', on), json('map.json', on), json('landmarks.json', on), gunzip('terrain.bin', on), gunzip('urban.bin', on), json('tiles.json', on), json('ports.json', on), gunzip('ships.bin', on), json('transit.json', on), json('lines.json', on), json('entries.json', on), json('squares.json', on), gunzip('squares.bin', on), json('walls.json', on), json('infra.json', on), json('green.json', on), json('parking.json', on), json('bufe.json', on), json('campus.json', on)]); transit.entries = entries.list;
-  const topkapi = await fetch(new URL('topkapi.json', BASE)).then((r) => (r.ok ? r.json() : null)).catch(() => null); // (the palace: client/topkapi.js)
+  // The palace height patch and its walkable floor must agree. Without that
+  // pair the original city terrain and landmark models remain usable.
+  const palace = Promise.all([json('topkapi.json', on), gunzip('topkapi-floor.bin', on)])
+    .catch(error => { console.warn('Topkapı assets', error.message); return [null, null]; });
+  const [roads, streets, map, marks, tb, ub, index, ports, shipsBin, transit,
+    lines, entries, squares, squaresBin, walls, parking, [topkapi, palaceFloor]] = await Promise.all([
+    json('roads.json', on), json('streets.json', on), json('map.json', on), json('landmarks.json', on),
+    gunzip('terrain.bin', on), gunzip('urban.bin', on), json('tiles.json', on), json('ports.json', on),
+    gunzip('ships.bin', on), json('transit.json', on), json('lines.json', on), json('entries.json', on),
+    json('squares.json', on), gunzip('squares.bin', on), json('walls.json', on), json('parking.json', on), palace,
+  ]);
+  transit.entries = entries.list;
   // terrain: heights as deltas along the rows, low and high bytes apart
   const { w, h } = map.grid, N = w * h, u = new Uint8Array(tb), H = new Float32Array(N);
   for (let k = 0, v = 0; k < N; k++) { const d = u[k] | (u[N + k] << 8); v = k % w ? (v + d) & 65535 : d; H[k] = v / 400 - 20; }
   if (topkapi) for (const [k, v] of topkapi.ground || []) H[k] = v; // (the ground under the palace's terraces, lowered to them: tools/topkapi.mjs)
   const shore = u.slice(N * 2, N * 3), park = u.slice(N * 3, N * 4);
   const stream = new Stream(index, new URL('tiles/', BASE));
-  return { roads, streets, map, ground: makeGround(map.grid, H, shore), H, shore, park, urban: new Uint8Array(ub), landmarks: marks, stream, ports, shipsBin, transit, lines, squares, squaresBin, walls, infra, green, parking, bufe, campus, topkapi };
+  return { roads, streets, map, ground: makeGround(map.grid, H, shore), H, shore, park, urban: new Uint8Array(ub), landmarks: marks, stream, ports, shipsBin, transit, lines, squares, squaresBin, walls, parking, topkapi, palaceFloor };
 }
 function makeGround(g, H, S) {
   const look = (f, k) => (x, z) => {

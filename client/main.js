@@ -1,4 +1,5 @@
-import { loadAssets } from './assets.js';
+import { homeHtml, action, store } from './home.js';
+import { assetsReady, reportStage, pendingChoice, onChoice, finishStartup } from './start-screen.js';
 import { Network, Course } from '../shared/track.js';
 import { Streets } from '../shared/streets.js';
 import { COURSES } from '../shared/courses.js';
@@ -10,7 +11,6 @@ import { buildWorld } from './world.js';
 import { Hud, fmt, esc } from './hud.js';
 import { Game } from './game.js';
 import { Fx } from './fx.js';
-import { Loading } from './loading.js';
 import { Weather } from './weather.js';
 import { CHOICES, WEATHER, mixWeather } from '../shared/weather.js';
 import { Audio } from './audio.js';
@@ -27,7 +27,6 @@ import { t, lang, setLang, err } from './i18n.js';
 import { board, lapTable, gapChart, placeChart, hover, clearCharts } from './statsview.js';
 
 const $ = (s, e = document) => e.querySelector(s), ui = $('#ui'), hudEl = $('#hud');
-const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(`nanoprix.${k}`); localStorage.setItem(`nanoprix.${k}`, v); } catch { /* */ } return null; };
 let tt = 0; const toast = (s, ms = 3200) => { const e = $('#toast'); e.textContent = s; e.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => e.classList.remove('show'), ms); };
 setLang(lang());
 let profile; try { profile = JSON.parse(store('profile') || '{}'); } catch { profile = {}; }
@@ -35,15 +34,24 @@ profile = sanitizeProfile({ name: profile.name || ['Taksici', 'Simitçi', 'Kapta
 const saveProfile = () => store('profile', JSON.stringify(profile));
 
 // ---------------------------------------------------------------- loading
-const loading = new Loading(ui);
+
 let A, net, view, game, hud, audio, music, fx, input, weather;
-try {
-  A = await loadAssets((file, n) => loading.bytes(file, n));
+{
+  A = await assetsReady;
   net = new Network(A.roads); new Streets(net, A.streets); view = new View($('#gl')); await new Promise((r) => setTimeout(r, 20));
-  view.world = await buildWorld(view.scene, A, net, (s) => loading.stage(s)); view.applyNight(0);
+  const prioritize = () => {
+    const kind = pendingChoice()?.action;
+    const id = kind === 'quick' || kind === 'trial' ? COURSES.find(c => c.id === QUICK_RACE.course).hubs[0] : kind === 'free' ? 'taksim' : null;
+    const hub = net.hubs.get(id);
+    if (hub) A.stream.pin([{ x: hub.x, z: hub.z, r: 100 }]);
+  };
+  const stopListening = onChoice(prioritize);
+  prioritize();
+  view.world = await buildWorld(view.scene, A, net, reportStage);
+  stopListening();
+  A.stream.deliver(); view.applyNight(0);
   hud = new Hud(hudEl, A, net); audio = new Audio(); music = new Music(audio); music.later = () => !music.el && (A.stream.holds.length > 0 || A.stream.share < 0.35); music.told = (n) => toast(`♪ ${n}`, 2600); fx = new Fx(view.scene); input = new Input(document.body); weather = new Weather(view.scene, view.world, fx, audio); view.world.sea = (x, z) => weather.sea(x, z); game = new Game({ view, net, hud, audio, fx, input, weather }); game.fly = new Fly(game, view.renderer.domElement); game.nav = new Nav(game, $('#find')); game.nextSign = new NextSign(hud, view.world.signs, net); view.warm();
-} catch (e) { loading.fail(e.message); throw e; }
-loading.done(); ui.innerHTML = '';
+}
 
 // ---------------------------------------------------------------- rooms
 // where this game will begin: its houses and sights first
@@ -198,9 +206,15 @@ addEventListener('pagehide', () => { if (host) host.unlist(); if (link && !host)
 
 // ---------------------------------------------------------------- screens
 function go(s) {
+  const previous = screen;
   if (screen !== s && (screen === 'race' || screen === 'results')) clearCharts();
   if (s !== 'results') raceStats = null;
   clearTimeout(directoryTimer); screen = s; hudEl.hidden = s !== 'race'; draw();
+  if (s === 'home' && ['garage', 'directory', 'journal'].includes(previous)) {
+    ui.querySelector(`[data-do="${previous}"]`)?.focus({ preventScroll: true });
+  } else if (s === 'garage' && !input.touchEl) {
+    ui.querySelector('#name')?.focus({ preventScroll: true });
+  }
 }
 const seg = (id, opts, v) => `<div class="row seg" data-seg="${id}">${opts.map(([k, n]) => `<button data-v="${k}" class="${String(k) === String(v) ? 'on' : ''}">${n}</button>`).join('')}</div>`;
 let comparison = null, directoryTimer, directoryGeneration = 0, rows = [], listStatus = '', directoryTransport = '';
@@ -225,7 +239,6 @@ async function browse() {
   draw(); clearTimeout(directoryTimer);
   directoryTimer = setTimeout(browse, 10000);
 }
-const action = (id, label, main = false) => `<button data-do="${id}" ${main ? 'class="main"' : ''}>${t(label)}</button>`;
 function directoryHtml() {
   return `<div class="panel center"><h2>${t('publicRooms')}</h2>
     ${listStatus ? `<p role="status">${t(listStatus)}</p>` : ''}
@@ -241,7 +254,26 @@ function draw() {
     if (freeze && !input.menu) { input.keys.clear(); game.audio.quiet(); }
   }
   input.menu = screen === 'race' && (paused || settingsOpen);
-  const menu = screen !== 'race' || paused || settingsOpen, at = `${screen}${settingsOpen}${paused}`, top = drawn === at ? $('.panel', ui)?.scrollTop : 0; drawn = at; document.body.classList.toggle('driving', screen === 'race'); input.showTouch(!menu); paint(); if (top) { const p = $('.panel', ui); if (p) p.scrollTop = top; }
+  const menu = screen !== 'race' || paused || settingsOpen;
+  const at = `${screen}:${settingsOpen}:${paused}:${journalOpen}`;
+  const same = at === drawn;
+  const panel = $('.panel', ui);
+  const top = same ? panel?.scrollTop : 0;
+  const active = document.activeElement;
+  let selector;
+  if (same && ui.contains(active)) {
+    const segment = active.closest('[data-seg]');
+    const key = Object.keys(active.dataset)[0];
+    if (active.id) selector = '#' + CSS.escape(active.id);
+    else if (key) selector = (segment ? `[data-seg="${CSS.escape(segment.dataset.seg)}"] ` : '') +
+      `[data-${key}="${CSS.escape(active.dataset[key])}"]`;
+  }
+  drawn = at;
+  document.body.classList.toggle('driving', screen === 'race');
+  input.showTouch(!menu);
+  paint();
+  if (top && $('.panel', ui)) $('.panel', ui).scrollTop = top;
+  if (selector) ui.querySelector(selector)?.focus({ preventScroll: true });
 }
 function paint() {
   const race = screen === 'race', corner = input.touchEl ? (settingsOpen || (race && paused) ? '' : `<div class="corner">${race ? `${game.free && game.mine ? '<button data-do="find">🔎</button>' : ''}<button data-do="seat" hidden>💺</button><button data-do="cam">🎥</button><button data-do="menu">☰</button>` : `${nightBtn()}<button data-do="settings">⚙</button>`}</div>`) : `<div class="corner">${screen === 'race' && game.free && game.mine ? '<button data-do="find">🔎</button>' : ''}<button data-do="cam">🎥</button>${nightBtn()}<button data-do="settings">⚙</button></div>`;
@@ -251,20 +283,7 @@ function paint() {
   if (screen === 'garage') { ui.innerHTML = corner + `<div class="panel"><h2>${t('garage')}</h2>${profileHtml()}<div class="col">${action('back', 'back', true)}</div></div>`; return; }
   if (screen === 'home') ui.innerHTML = corner + homeHtml(); else if (screen === 'room') ui.innerHTML = corner + roomHtml(); else if (screen === 'results') ui.innerHTML = corner + resultsHtml(); else ui.innerHTML = corner + (paused ? pauseHtml() : '');
 }
-const profileHtml = () => `<label>${t('name')}</label><input type="text" id="name" maxlength="16" value="${esc(profile.name)}" autocomplete="off"><label>${t('car')}</label><div class="row seg" style="flex-wrap:wrap">${CARS.map((c) => `<button data-car="${c.id}" style="flex:1 0 30%" class="${c.id === profile.car ? 'on' : ''}">${c.name[lang()]}</button>`).join('')}</div><label>${t('color')}</label><div class="row">${COLOURS.map((c) => `<button class="sw ${c === profile.color ? 'on' : ''}" data-color="${c}" style="background:${c}" aria-label="${c}"></button>`).join('')}</div>`;
-function homeHtml() {
-  const best = readBest(store);
-  return `<div class="panel"><h1>NANO<span>PRIX</span><small>${t('tagline')}</small></h1>
-    <div class="col home-actions">
-      ${action('quick', 'quick', true)}
-      <div class="row">${action('solo', 'custom')}${action('trial', 'trial')}</div>
-      ${best ? `<small>${t('personal')} · Pera · ${fmt(best)}</small>` : ''}
-      <div class="row">${action('free', 'cruise')}${action('journal', 'journal')}</div>
-      ${action('garage', 'garage')}
-      <div class="row">${action('directory', 'publicRooms')}${action('create', 'create')}</div>
-      <div class="row"><input type="text" id="code" class="grow" style="width:auto;text-transform:uppercase" placeholder="${t('code')}" maxlength="4" autocomplete="off">${action('join', 'join')}</div>
-    </div><div class="fine">${t('credits')}</div></div>`;
-}
+const profileHtml = () => `<label for="name">${t('name')}</label><input type="text" id="name" maxlength="16" value="${esc(profile.name)}" autocomplete="off"><label>${t('car')}</label><div class="row seg" style="flex-wrap:wrap">${CARS.map((c) => `<button data-car="${c.id}" aria-pressed="${c.id === profile.car}" style="flex:1 0 30%" class="${c.id === profile.car ? 'on' : ''}">${c.name[lang()]}</button>`).join('')}</div><label>${t('color')}</label><div class="row">${COLOURS.map((c) => `<button class="sw ${c === profile.color ? 'on' : ''}" data-color="${c}" aria-pressed="${c === profile.color}" style="background:${c}" aria-label="${c}"></button>`).join('')}</div>`;
 const lens = new Map(), lenOf = (c) => { if (!lens.has(c.id)) lens.set(c.id, net.pathRoads(c.hubs).reduce((s, [r]) => s + r.len, 0) / 100); return lens.get(c.id); };
 function roomHtml() {
   if (!room) return ''; const meNow = room.members.find((m) => m.id === myId), S = room.settings, am = room.hostId === myId, cr = S.mode === 'cruise', c = COURSES.find((q) => q.id === S.course), dis = am ? '' : 'style="pointer-events:none;opacity:.85"', on = !!room.code;
@@ -295,10 +314,26 @@ function settingsHtml() { return `<div class="panel center opts"><h2>${t('settin
 function pauseHtml() { const am = room && room.hostId === myId; return `<div class="panel center"><h2>NANOPRIX</h2><p class="desc">${t('controls')}</p><div class="col"><button class="main" data-do="resume">${t('resume')}</button>${input.touchEl ? `<div class="row">${nightBtn()}${am ? `<button class="grow" data-do="weather">${t('weather')}: ${t(`w_${game.wx.to}`)}</button>` : ''}<button class="grow" data-do="settings">⚙ ${t('settings')}</button></div>` : ''}${am ? `<button data-do="stop">${t(game.free ? 'again' : 'quit')}</button>` : ''}${game.free && game.mine ? action('journal', 'journal') : ''}${room && room.code ? `<button data-do="invite">${t('invite')} · ${room.code}</button>` : host && !game.msg?.trial ? `<button data-do="open" ${busy ? 'disabled' : ''}>${busy ? t('opening') : t('openOnline')}</button>` : ''}<button data-do="leave">${t('leave')}</button></div></div>`; }
 const set = (o) => link && link.send({ t: 'set', settings: { ...room.settings, ...o } });
 const sendProfile = () => { saveProfile(); if (link && room) link.send({ t: 'profile', profile }); };
-ui.addEventListener('click', async (e) => {
-  const b = e.target.closest('button'); if (!b || (busy && (screen === 'home' || screen === 'directory'))) return; b.blur(); const d = b.dataset;
+ui.addEventListener('click', (e) => {
+  const button = e.target.closest('button');
+  if (button) handleButton(button);
+});
+async function handleButton(b) {
+  if (busy && (screen === 'home' || screen === 'directory')) return;
+  const d = b.dataset;
   if (d.join) { if (!busy) directoryTransport === 'peer' ? joinP2p(d.join) : join(d.join); return; }
-  if (d.car) { profile.car = d.car; sendProfile(); showCar(); draw(); return; } if (d.color) { profile.color = d.color; sendProfile(); showCar(); draw(); return; }
+  if (d.car || d.color) {
+    const key = d.car ? 'car' : 'color';
+    profile[key] = d[key];
+    sendProfile();
+    showCar();
+    for (const option of ui.querySelectorAll(`[data-${key}]`)) {
+      const selected = option.dataset[key] === d[key];
+      option.classList.toggle('on', selected);
+      option.setAttribute('aria-pressed', String(selected));
+    }
+    return;
+  }
   if (d.course) { const c = COURSES.find((q) => q.id === d.course); set({ course: c.id, laps: c.laps }); return; } if (d.tab) { resTab = d.tab; draw(); return; } if (d.watch) { link.send({ t: 'watch', on: d.watch === '1' }); return; } if (d.start) { set({ start: d.start }); return; } if (d.kick) { link.send({ t: 'kick', id: +d.kick }); return; }
   const sg = b.closest('[data-seg]'); if (sg) { const k = sg.dataset.seg, v = d.v === 'true' ? true : d.v === 'false' ? false : Number.isNaN(+d.v) ? d.v : +d.v; if (k === 'gfx') view.chooseQuality(v); else if (k === 'tilt') { view.tiltOn = v; store('tilt', v ? '1' : '0'); } else if (k === 'sound') { audio.toggle(v); music.sync(); } else if (k === 'music') music.toggle(v); else if (k === 'lang') setLang(v); else { set({ [k]: v }); return; } draw(); return; }
   switch (d.do) {
@@ -323,16 +358,23 @@ ui.addEventListener('click', async (e) => {
     case 'track': if (!music.on) music.toggle(true); music.next(); draw(); break;
     case 'find': game.nav.show(); break; case 'settings': settingsOpen = !settingsOpen; draw(); break; case 'cam': cam(); break; case 'night': if (game.active) game.toggleNight(); else menuNight = menuNight ? 0 : 1; setTimeout(draw, 900); break; default:
   }
-});
+}
 ui.addEventListener('input', (e) => { if (e.target.id === 'name') { const p = sanitizeProfile({ ...profile, name: e.target.value }); profile.name = p.name; sendProfile(); } });
-ui.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'code') join(e.target.value); e.stopPropagation(); });
+ui.addEventListener('keydown', (e) => { if (e.key === 'Escape') escapeMenu(); else if (e.key === 'Enter' && e.target.id === 'code') join(e.target.value); e.stopPropagation(); });
 const cam = (e) => { if (e && e.preventDefault) e.preventDefault(); if (game.active && !game.fly.on) toast(t(view.nextCam()), 900); };
 input.on('F2', cam); input.on('KeyC', cam); input.on('ArrowLeft', () => game.pickWatch(-1)); input.on('ArrowRight', () => game.pickWatch(1)); input.on('KeyX', () => { if (game.active && game.cabin) game.cabin.turn(); }); input.on('KeyG', () => game.toggleAuto()); input.on('KeyE', () => game.trip.act()); input.on('KeyF', (e) => game.nav.show(e)); input.on('Slash', (e) => game.nav.show(e)); input.on('KeyQ', () => { if (game.active && game.trip.hall) game.trip.up(); }); input.on('Tab', (e) => { if (!game.active || !game.stats) return; e.preventDefault(); if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); game.showFull(); }); input.on('KeyT', () => { if (game.active && game.stats) game.nextMode(); });
 ui.addEventListener('pointermove', hover); ui.addEventListener('pointerleave', hover);
 const nextWeather = () => { if (!game.active || !room || room.hostId !== myId) return; const i = CHOICES.indexOf(game.wx.to); link.send({ t: 'weather', weather: CHOICES[(i + 1) % CHOICES.length] }); };
 input.on('KeyV', nextWeather); if (input.touchEl) hudEl.addEventListener('click', (e) => { if (!game.active) return; if (e.target.closest('.tw')) game.nextMode(); else if (e.target.closest('.time, .secs, .full')) game.showFull(); }); input.on('KeyN', () => { if (game.active) game.toggleNight(); else menuNight = menuNight ? 0 : 1; }); input.on('KeyR', () => game.reset()); for (let k = 1; k <= 9; k++) input.on(`Digit${k}`, () => { if (game.active && game.fuel) game.fuel.key(k); }); // (at the pump, at the till)
 input.on('KeyM', () => { music.toggle(!music.on); toast(music.on ? `♪ ${music.name}` : '♪ ✕', 1600); if (settingsOpen) draw(); });
-input.on('Escape', () => { if (settingsOpen) settingsOpen = false; else if (journalOpen) journalOpen = false; else if (['directory', 'journal', 'garage'].includes(screen) && !busy) go('home'); else if (screen === 'race') paused = !paused; draw(); });
+function escapeMenu() {
+  if (settingsOpen) settingsOpen = false;
+  else if (journalOpen) journalOpen = false;
+  else if (['directory', 'journal', 'garage'].includes(screen) && !busy) return go('home');
+  else if (screen === 'race') paused = !paused;
+  draw();
+}
+input.on('Escape', escapeMenu);
 
 // ---------------------------------------------------------------- behind the menus: a slow flight round the course, the car turning in front
 let menuNight = 0, menuCourse = null, menuId = '', shown = null;
@@ -364,7 +406,11 @@ function loop(now) {
   if (now - (loop.at || 0) > 300) { loop.at = now; const k = game.active ? 1 : A.stream.share, s = k < 0.995 ? `${t('comes')} ${Math.round(k * 100)}%` : ''; if (s !== pill) { pill = s; const e = $('#pill'); e.textContent = s; e.hidden = !s; } }
   fx.update(dt, innerHeight * view.renderer.getPixelRatio(), view.night); view.render(dt, now);
 }
-go('home'); requestAnimationFrame(loop);
+const launch = finishStartup();
+go('home');
+$('#code').value = launch.code;
+if (launch.focus) ui.querySelector(launch.focus)?.focus({ preventScroll: true });
+requestAnimationFrame(loop);
 function followInvite() {
   const match = /^#(p-)?([a-z]{4})$/i.exec(location.hash);
   if (!match || busy) return;
@@ -378,4 +424,8 @@ function followInvite() {
 }
 addEventListener('hashchange', followInvite);
 followInvite();
+if (launch.action && !location.hash.match(/^#(p-)?[a-z]{4}$/i)) {
+  const button = ui.querySelector(`[data-do="${launch.action}"]`);
+  if (button) handleButton(button);
+}
 window.nanoprix = { view, game, net, stream: A.stream, music, get room() { return room; }, get link() { return link; } };

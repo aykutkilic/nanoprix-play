@@ -1,5 +1,8 @@
 // Türkçe and English.
 const T = {
+  retryLoad: ['Tekrar dene', 'Try again'],
+  findError: ['Adresler yüklenemedi.', 'Could not load addresses.'],
+  startupError: ['Şehir yüklenemedi.', 'Could not load the city.'],
   quick: ['Hızlı yarış', 'Quick Race'], custom: ['Özel yarış', 'Custom Race'], trial: ['Zamana karşı', 'Time Trial'], retry: ['Tekrar yarış', 'Race again'],
   garage: ['Garaj', 'Garage'], back: ['Geri', 'Back'], personal: ['Kişisel rekor', 'Personal best'], faster: ['daha hızlı', 'faster'], slower: ['daha yavaş', 'slower'], tied: ['Rekorla aynı süre', 'Matched your best'],
   journal: ['Gezi defteri', 'City journal'], outings: ['Geziler', 'Outings'], startOuting: ['Geziye başla', 'Start outing'],

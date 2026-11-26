@@ -14,7 +14,7 @@ export const lift = (r) => (r.spur ? -0.003 : 0.004) + RANK[r.style] * 0.007 + (
 // (the highest of what is drawn there: roads overlap, and a junction's round lies over them)
 export const drawnAt = (net, x, z, y) => {
   let m = -1; net.around(x, z, (r, i, t, d, h) => { if (d < r.hw + 0.05 && Math.abs(h - y) < 0.5) m = Math.max(m, lift(r)); });
-  for (const d of net.discs) { const dx = d.x - x, dz = d.z - z; if (dx * dx + dz * dz < d.r * d.r && Math.abs(d.h - y) < 1) m = Math.max(m, 0.04 - 0.036 * Math.max(0, Math.hypot(dx, dz) / d.r - 0.85) / 0.15); }
+  for (const d of net.discsAt(x, z)) { const dx = d.x - x, dz = d.z - z; if (dx * dx + dz * dz < d.r * d.r && Math.abs(d.h - y) < 1) m = Math.max(m, 0.04 - 0.036 * Math.max(0, Math.hypot(dx, dz) / d.r - 0.85) / 0.15); }
   return m < 0 ? 0.02 : m;
 };
 // the edge of a road, going out from the asphalt's rim: a kerb (a wall by a motorway or on a bridge), then the pavement
@@ -22,6 +22,35 @@ const KERB = 0.13, kerbOf = (style, bridge) => ({ H: style === 'motorway' ? 0.2 
 // how far above the rim one stands there, `o` out from it; null: that is not on it
 const stepUp = (style, bridge, o, tight) => { const k = kerbOf(style, bridge); return o < -0.02 || o > KERB + (tight ? 0 : k.walk + 0.03) ? null : o < KERB + 0.005 ? k.H : k.top; };
 const RANK = { spur: 0, lane: 0, street: 0, shore: 1, avenue: 2, motorway: 3 };
+// Index each driveway in every cell reached by its 0.8-unit kerb cut.
+function drivewayLookup(stations) {
+  const cells = new Map();
+  const cell = value => Math.floor(value / 8);
+  for (const station of stations) {
+    const frame = frameOf(station);
+    for (const lane of [-1.15, 1.15]) {
+      const [x, z] = frame.at(lane, 0), [bx, bz] = frame.at(lane, -8);
+      const dx = bx - x, dz = bz - z;
+      const segment = { x, z, dx, dz, length2: dx * dx + dz * dz };
+      for (let i = cell(Math.min(x, bx) - 0.8); i <= cell(Math.max(x, bx) + 0.8); i++) {
+        for (let j = cell(Math.min(z, bz) - 0.8); j <= cell(Math.max(z, bz) + 0.8); j++) {
+          const key = i * 8192 + j;
+          if (!cells.has(key)) cells.set(key, []);
+          cells.get(key).push(segment);
+        }
+      }
+    }
+  }
+  return (x, z) => {
+    const nearby = cells.get(cell(x) * 8192 + cell(z));
+    if (!nearby) return false;
+    return nearby.some(s => {
+      const px = x - s.x, pz = z - s.z;
+      const t = Math.max(0, Math.min(1, (px * s.dx + pz * s.dz) / s.length2));
+      return Math.hypot(px - s.dx * t, pz - s.dz * t) < 0.8;
+    });
+  };
+}
 export function buildRoads(W) {
   const { root, net, night, height, coast } = W, V = (x, y, z) => new THREE.Vector3(x, y, z);
   const makeAsphalt = (dry) => { const asphalt = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.82 });
@@ -70,7 +99,7 @@ export function buildRoads(W) {
     let c = !!net.transit && net.transit.mouth(x, z); if (c) return true;
     net.around(x, z, (r, i, t, d, h) => { if (r !== self && d < r.hw - 0.06 && Math.abs(h - y) < 0.55) c = true; });
     if (c) return true;
-    for (const d of net.discs) if (Math.abs(d.x - x) < d.r && Math.abs(d.z - z) < d.r && Math.hypot(d.x - x, d.z - z) < d.r - 0.02 && Math.abs(d.h - y) < 1) return true;
+    for (const d of net.discsAt(x, z)) if (Math.abs(d.x - x) < d.r && Math.abs(d.z - z) < d.r && Math.hypot(d.x - x, d.z - z) < d.r - 0.02 && Math.abs(d.h - y) < 1) return true;
     return false;
   };
   const lamps = [], piers = [];
@@ -82,8 +111,7 @@ export function buildRoads(W) {
   const crowded = (x, z, nx, nz, y, self, w) => { for (const o of w) { let c = false; const px = x + nx * o, pz = z + nz * o; net.around(px, pz, (r, i, t, d, h) => { if (r !== self && d < r.hw && Math.abs(h - y) < 0.9) c = true; }); if (c) return true; } return false; };
   const above = (x, z, y, self) => { let c = false; net.around(x, z, (r, i, t, d, h) => { if (r !== self && d < r.hw + 0.7 && h < y - 0.85 && h > y - 4) c = true; }); return c; };
   // where a filling station's way in or out crosses the pavement the kerb is let down (client/parking.js lays the apron over it)
-  const drops = ((W.A.parking && W.A.parking.stations) || []).flatMap((s) => { const f = frameOf(s); return [-1.15, 1.15].map((a) => [f.at(a, 0), f.at(a, -8)]); });
-  const dropped = (x, z) => drops.some(([[ax, az], [bx, bz]]) => { const ex = bx - ax, ez = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez))); return Math.hypot(x - ax - ex * t, z - az - ez * t) < 0.8; });
+  const dropped = drivewayLookup(W.A.parking?.stations || []);
   const profile = (p, nx, nz, y, r, side, bridge, tight) => { // nx, nz point outwards; returns the profile's points
     const at = (o, up) => [p[0] + nx * o, y + up, p[1] + nz * o], low = !bridge && r.style !== 'motorway' && dropped(p[0] + nx * 0.3, p[1] + nz * 0.3), { H, top, walk } = low ? { H: -0.02, top: -0.02, walk: 0.55 } : kerbOf(r.style, bridge);
     if (tight) { const a = [at(0, -0.02), at(0.02, H), at(0.11, H), at(KERB, -0.3)]; return bridge ? [...a, at(-r.hw * 0.4, -0.42)] : a; }

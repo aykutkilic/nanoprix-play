@@ -1,5 +1,5 @@
 import { t, touch } from './i18n.js';
-import { esc } from './hud.js';
+import { esc } from './format.js';
 import { TRIAL_CAR, TIME_TRIAL, trialRecordKey } from '../shared/events.js';
 
 export function readBest(store, settings = TIME_TRIAL) {

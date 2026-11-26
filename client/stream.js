@@ -9,6 +9,17 @@ export class Stream {
     this.waits = new Set();
   }
   on(kind, fn) { (this.hands[kind] ||= []).push(fn); }
+  // Hold decoded start tiles until every city layer has registered its consumer.
+  deferDelivery() { this.pending = []; }
+  deliver() {
+    const pending = this.pending || [];
+    this.pending = null;
+    for (const [tile, data] of pending) this.notifyTile(tile, data);
+  }
+  notifyTile(tile, data) {
+    if (this.pending) this.pending.push([tile, data]);
+    else for (const receive of this.hands[tile.kind] || []) receive(tile, data);
+  }
   // the way one will go: [[x, z], …]; null: no telling
   route(points) { this.way = points; for (const t of this.tiles) { t.way = 1e9; if (points && t.kind !== 's') for (let k = 0; k < points.length; k++) if (gap(t, points[k][0], points[k][1]) < (t.kind === 'm' ? 150 : t.kind === 'h' ? 110 : 60)) { t.way = k / points.length; break; } } this.pump(); }
   pin(list) { this.pins = list; this.pump(); }
@@ -33,7 +44,7 @@ export class Stream {
     try { const r = await this.fetcher(new URL(`${t.f}.bin?v=${t.v}`, this.base), { signal: t.ctl.signal }); if (!r.ok) throw new Error(String(r.status)); data = await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer(); } catch (e) { t.state = 0; if (e.name !== 'AbortError') t.tries++; t.after = e.name === 'AbortError' ? 0 : Date.now() + Math.min(20000, 700 * 2 ** t.tries); }
     // An aborted signal can retain the call stack that requested a new race.
     t.ctl = null;
-    this.busy--; if (data) { t.state = 2; this.bytes += t.n; for (const f of this.hands[t.kind] || []) f(t, data); } for (const w of [...this.waits]) w(); this.pump();
+    this.busy--; if (data) { t.state = 2; this.bytes += t.n; this.notifyTile(t, data); } for (const w of [...this.waits]) w(); this.pump();
   }
   within(x, z, r) { return this.tiles.filter((t) => t.kind !== 's' && gap(t, x, z) < r * (t.kind === 'd' ? 0.45 : 1)); }
   // how much of a place is here, 0 … 1

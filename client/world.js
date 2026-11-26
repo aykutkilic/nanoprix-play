@@ -5,7 +5,7 @@
 import * as THREE from './vendor/three.module.min.js';
 import { MOON_DIR, CARTOON_MOON, noiseTexture, rng, stoneMaterial } from './realism.js';
 import { surf, weathered, SWELL_GLSL, cutAway } from './weather.js';
-import { readHouses } from './assets.js';
+import { loadScenery, readHouses } from './assets.js';
 import { buildRoads } from './roads.js';
 import { buildMarks } from './marks.js';
 import { buildBuildings } from './buildings.js';
@@ -248,13 +248,31 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   await onStage('city');
 
   buildRoads(W); await onStage('roads');
-  buildMarks(W); await buildTopkapi(W); buildSquares(W); buildGalata(W); buildWalls(W); buildInfra(W); buildGreen(W); buildParking(W); buildBufe(W); buildMalls(W); buildCampus(W); await onStage('landmarks');
+  buildMarks(W); buildTopkapi(W); buildSquares(W); buildGalata(W); buildWalls(W); buildParking(W); buildMalls(W); await onStage('landmarks');
   buildLife(W); await onStage('life'); buildShips(W, A); buildTransit(W); buildStops(W); await onStage('ships');
   buildSigns(W); buildSignals(W); await onStage('signs');
   lampTex.needsUpdate = true;
 
   W.setNight = (k) => { night.value = k; for (const [m, x] of W.glow) m.emissiveIntensity = k * x; for (const [l, x] of W.spots) l.intensity = k * x; };
   let asked = 0; W.update = (dt, now, cam, far) => { time.value = now / 1000; if (now - asked > 400) { asked = now; A.stream.focus(cam.x, cam.z, far * 1.15 + 40); } if (W.lampsAt && now > W.lampsAt) { W.lampsAt = 0; lampTex.needsUpdate = true; } W.updateGround(cam); W.keeper.update(now, cam, far); W.updateMarks(cam, far); W.updateTiles(cam, far); W.updateBuildings(cam, far); for (const u of W.updates) u(dt, now, cam, far); };
+  // Optional scenery yields to the starting grid. Install at most one layer
+  // per frame; a failed transfer retries without rebuilding successful layers.
+  const layers = Object.entries({ infra: buildInfra, green: buildGreen, bufe: buildBufe, campus: buildCampus });
+  let fetching = false;
+  let retryAt = 0;
+  W.updates.push((_dt, now) => {
+    if (fetching || !layers.length || A.stream.holds.length || now < retryAt) return;
+    const [name, build] = layers.shift();
+    fetching = true;
+    loadScenery(name).then(data => {
+      A[name] = data;
+      build(W);
+    }, error => {
+      console.warn('City scenery', error.message);
+      layers.push([name, build]);
+      retryAt = performance.now() + 3000;
+    }).finally(() => { fetching = false; });
+  });
   W.bounds = M0;
   return W;
 }

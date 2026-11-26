@@ -11,18 +11,17 @@ const get = async (n, gz) => { const r = await fetch(new URL(n, BASE)); if (!r.o
 
 // the pieces as tools/topkapi.mjs packs them: int16 corners, int8 normals, colours with the kind of thing in the fourth
 function pieces(chunks, buf, mat, parent, cast, o0 = 0) {
-  let o = o0; const out = [];
+  let o = o0;
   for (const c of chunks) {
     const pos = new Int16Array(buf, o, c.nv * 4); o += c.nv * 8; const nor = new Int8Array(buf, o, c.nv * 4); o += c.nv * 4; const col = new Uint8Array(buf, o, c.nv * 4); o += c.nv * 4;
     const idx = c.wide ? new Uint32Array(buf, o, c.ni) : new Uint16Array(buf, o, c.ni); o += c.ni * (c.wide ? 4 : 2) + c.pad;
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 4)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 4, true)); g.setAttribute('color', new THREE.BufferAttribute(col, 4, true)); g.setIndex(new THREE.BufferAttribute(idx, 1));
-    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), c.r / c.q); const m = new THREE.Mesh(handOver(g), mat); m.position.set(c.x, c.y, c.z); m.scale.setScalar(c.q); m.castShadow = cast; m.receiveShadow = true; m.matrixAutoUpdate = false; m.updateMatrix(); m.matrixWorld.copy(m.matrix); parent.add(m); // (in W.still, at the origin) out.push(m);
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), c.r / c.q); const m = new THREE.Mesh(handOver(g), mat); m.position.set(c.x, c.y, c.z); m.scale.setScalar(c.q); m.castShadow = cast; m.receiveShadow = true; m.matrixAutoUpdate = false; m.updateMatrix(); m.matrixWorld.copy(m.matrix); parent.add(m); // Parent groups are at the world origin.
   }
-  return out;
 }
-export async function buildTopkapi(W) {
+export function buildTopkapi(W) {
   const D = W.A.topkapi; if (!D) return; // (loaded with the ground, which it lowers here and there: client/assets.js)
-  const F = D.floor, fb = await get('topkapi-floor.bin', true), NC = F.w * F.h, L0 = new Int16Array(fb, 0, NC), bit = (o) => new Uint8Array(fb, NC * 2 + o * Math.ceil(NC / 8), Math.ceil(NC / 8)), cutBits = bit(0), builtBits = bit(1), room = new Uint8Array(fb, NC * 2 + 2 * Math.ceil(NC / 8), NC), moreA = new Int32Array(fb.slice(NC * 3 + 2 * Math.ceil(NC / 8)));
+  const F = D.floor, fb = W.A.palaceFloor, NC = F.w * F.h, L0 = new Int16Array(fb, 0, NC), bit = (o) => new Uint8Array(fb, NC * 2 + o * Math.ceil(NC / 8), Math.ceil(NC / 8)), cutBits = bit(0), builtBits = bit(1), room = new Uint8Array(fb, NC * 2 + 2 * Math.ceil(NC / 8), NC), moreA = new Int32Array(fb.slice(NC * 3 + 2 * Math.ceil(NC / 8)));
   const more = new Map(); for (let k = 0; k < moreA.length; k += 2) { const a = more.get(moreA[k]) || []; a.push(moreA[k + 1] / 400); more.set(moreA[k], a); }
   const cell = (x, z) => { const i = Math.floor((x - F.x0) / F.c), j = Math.floor((z - F.z0) / F.c); return i < 0 || j < 0 || i >= F.w || j >= F.h ? -1 : j * F.w + i; };
   const on = (B, k) => k >= 0 && (B[k >> 3] >> (k & 7)) & 1, P0 = D.precinct || [], inPrecinct = (x, z) => { let c = false; for (let i = 0, j = P0.length - 1; i < P0.length; j = i++) if (P0[i][1] > z !== P0[j][1] > z && x < ((P0[j][0] - P0[i][0]) * (z - P0[i][1])) / (P0[j][1] - P0[i][1]) + P0[i][0]) c = !c; return c; };
@@ -56,14 +55,44 @@ export async function buildTopkapi(W) {
   // drawn as the toys are (client/marks.js)
   const mat = W.markStone, far = new THREE.Group(), near = new THREE.Group(); far.name = 'Topkapı (far)'; near.name = 'Topkapı'; W.still.add(far); W.still.add(near); near.visible = false;
   let cx = 0, cz = 0, n = 0; for (const c of D.far) { cx += c.x * c.nv; cz += c.z * c.nv; n += c.nv; } cx /= n || 1; cz /= n || 1;
-  get('topkapi-far.bin', true).then((b) => pieces(D.far, b, mat, far, true)).catch((e) => console.warn('topkapi far', e.message));
-  // the gardens' ground (tools/topkapi.mjs, after ist's gardens.js): the courts' stone, the lawns and grass, the paths, each over the one under it
-  const ground = new THREE.Group(); ground.name = 'Topkapı gardens'; W.still.add(ground);
-  if (D.garden?.layers?.length) get('topkapi-ground.bin', true).then((b) => { D.garden.layers.forEach((L, k) => { const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1 - k, polygonOffsetUnits: -2 - 2 * k }); pieces(L.chunks, b, m, ground, false, L.at); }); }).catch((e) => console.warn('topkapi ground', e.message));
-  let asked = false, ready = false;
+  // The three visual layers have independent transfer and retry lifecycles.
+  // The floor stays available for collision before any visual layer is requested.
+  function requestLayer(file, install) {
+    let loading = false, loaded = false, retryAt = 0;
+    return now => {
+      if (!loaded && !loading && now >= retryAt) {
+        loading = true;
+        get(file, true).then(buffer => {
+          install(buffer);
+          loaded = true;
+        }).catch(error => {
+          console.warn(file, error.message);
+          retryAt = performance.now() + 5000;
+        }).finally(() => { loading = false; });
+      }
+      return loaded;
+    };
+  }
+  const loadFar = requestLayer('topkapi-far.bin', b => pieces(D.far, b, mat, far, true));
+  const loadNear = requestLayer('topkapi.bin', b => pieces(D.near, b, mat, near, true));
+  const ground = new THREE.Group();
+  ground.name = 'Topkapı gardens';
+  W.still.add(ground);
+  const loadGround = requestLayer('topkapi-ground.bin', buffer => {
+    D.garden.layers.forEach((layer, k) => {
+      const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1,
+        polygonOffset: true, polygonOffsetFactor: -1 - k, polygonOffsetUnits: -2 - 2 * k });
+      pieces(layer.chunks, buffer, material, ground, false, layer.at);
+    });
+  });
   W.updates.push((dt, now, cam, farOff) => {
     const d = Math.hypot(cam.x - cx, cam.z - cz) - 45;
-    if (!asked && d < NEAR * 2.2) { asked = true; get('topkapi.bin', true).then((b) => { pieces(D.near, b, mat, near, true); ready = true; }).catch((e) => console.warn('topkapi near', e.message)); }
-    const close = ready && d < NEAR; near.visible = close; far.visible = !close && d < (farOff || 300) * 2.2; ground.visible = d < (farOff || 300) * 2.2; // (as far as the palace: the game's ground under the courts is not drawn) // (as far as the other great landmarks are seen: client/marks.js)
+    const visible = d < (farOff || 300) * 2.2;
+    if (visible) {
+      loadFar(now);
+      if (D.garden?.layers?.length) loadGround(now);
+    }
+    const ready = d < NEAR * 2.2 && loadNear(now);
+    const close = ready && d < NEAR; near.visible = close; far.visible = !close && visible; ground.visible = visible; // (as far as the palace: the game's ground under the courts is not drawn) // (as far as the other great landmarks are seen: client/marks.js)
   });
 }

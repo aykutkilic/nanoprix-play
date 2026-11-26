@@ -1,9 +1,8 @@
 import { t } from './i18n.js';
 import { drawSign, size } from './signs.js';
 import { KMH } from '../shared/units.js';
-export const fmt = (ms) => { if (!ms || ms < 0) return '–:––.–––'; const m = Math.floor(ms / 60000), s = Math.floor(ms / 1000) % 60; return `${m}:${String(s).padStart(2, '0')}.${String(Math.floor(ms % 1000)).padStart(3, '0')}`; };
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-export { esc };
+import { fmt, esc } from './format.js';
+export { fmt, esc };
 export class Hud {
   constructor(el, A, net) {
     this.el = el; el.innerHTML = '<div class="pos"></div><div class="lap"></div><ol class="order"></ol><div class="tw"><div class="mode"></div><ol class="tower"></ol></div><div class="secs"><div class="sec0"></div></div><div class="ban"></div><div class="activity" aria-live="polite"></div><div class="ped"><i></i><i></i><b></b></div><div class="full" hidden></div><div class="time"></div><div class="keys"></div><div class="trip"></div><div class="nav"></div><canvas class="sign" hidden></canvas><div class="big"></div><div class="warn" hidden></div><div class="road"></div><div class="limit"></div><div class="turbo"><i></i></div><div class="speed"></div><canvas width="380" height="380"></canvas>';

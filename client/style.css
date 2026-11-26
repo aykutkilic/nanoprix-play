@@ -122,3 +122,5 @@ b.tl { font-variant-numeric: tabular-nums; } b.tl.no { color: #ff8a70; } #hud .b
 .room-list button { width: 100%; text-align: left; }
 .room-list small { display: block; }
 .home-actions .row > button { flex: 1; }
+#startup-map { position: fixed; inset: 0; pointer-events: none; }
+#startup-map:not(.pending) .ttl { display: none; }

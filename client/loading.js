@@ -6,7 +6,7 @@
 import { MINI as M } from './mini.js';
 import { t } from './i18n.js';
 // what is in which file, and which stage of the building makes it
-const PARTS = { land: [['terrain.bin', 'map.json'], 'terrain'], sea: [['ships.bin', 'ports.json'], 'sea'], city: [['urban.bin'], 'city'], roads: [['roads.json', 'streets.json', 'transit.json', 'lines.json', 'entries.json', 'squares.json', 'squares.bin', 'walls.json', 'infra.json', 'green.json', 'parking.json', 'bufe.json', 'campus.json'], 'roads'], marks: [['landmarks.json', 'tiles.json'], 'landmarks'], ships: [['ports.json', 'ships.bin'], 'ships'], signs: [['streets.json'], 'signs'] };
+const PARTS = { land: [['terrain.bin', 'map.json'], 'terrain'], sea: [['ships.bin', 'ports.json'], 'sea'], city: [['urban.bin'], 'city'], roads: [['roads.json', 'streets.json', 'transit.json', 'lines.json', 'entries.json', 'squares.json', 'squares.bin', 'walls.json', 'parking.json'], 'roads'], marks: [['landmarks.json', 'tiles.json'], 'landmarks'], ships: [['ports.json', 'ships.bin'], 'ships'], signs: [['streets.json'], 'signs'] };
 const ORDER = ['land', 'sea', 'city', 'roads', 'marks', 'ships', 'signs'], ease = (k) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
 export class Loading {
   constructor(host) {
@@ -47,6 +47,9 @@ export class Loading {
     for (const m of this.marks) { const k = ease((S.marks.f - m.at) / 0.05); if (k <= 0) continue; const ring = !this.still && k < 1 ? 1 - k : 0, r = (m.h ? 5.4 : 2.5) * (0.6 + 0.4 * k + 0.5 * ring); if (ring) { g.strokeStyle = `rgba(255,240,190,${ring * 0.8})`; g.lineWidth = 1.6; g.beginPath(); g.arc(m.x, m.z, 4 + k * 16, 0, 7); g.stroke(); } g.fillStyle = m.h ? '#fff3cf' : '#ffe08a'; g.globalAlpha = (m.h ? 0.85 : 0.6) + 0.15 * S.marks.b; g.beginPath(); g.moveTo(m.x, m.z - r * 1.35); g.lineTo(m.x + r, m.z); g.lineTo(m.x, m.z + r * 1.35); g.lineTo(m.x - r, m.z); g.fill(); g.globalAlpha = 1; }
   }
   fail(msg) { this.gone = true; this.what.textContent = msg; this.el.classList.add('failed'); }
-  // away: the map comes towards one
-  async done() { for (const k of ORDER) this.built[k] = true; await new Promise((r) => setTimeout(r, this.still ? 0 : 420)); const l = this.el; document.body.appendChild(l); l.classList.add('out'); setTimeout(() => { this.gone = true; removeEventListener('resize', this.resize); l.remove(); }, 800); }
+  done() {
+    this.gone = true;
+    removeEventListener('resize', this.resize);
+    this.el.remove();
+  }
 }

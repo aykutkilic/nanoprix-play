@@ -25,7 +25,7 @@ export function buildMarks(W) {
   const stone = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, side: THREE.DoubleSide, shadowSide: THREE.BackSide });
   stone.onBeforeCompile = (s) => {
     s.uniforms.uNight = night;
-    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying float vKind; varying vec3 vL; varying vec3 vP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvKind = floor(color.a * 255.0 + 0.5); vL = (modelMatrix * vec4(position, 0.0)).xyz; vP = (modelMatrix * vec4(position, 1.0)).xyz;');
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying float vKind; varying vec3 vL; varying vec3 vP;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvKind = floor(color.a * 255.0 + 0.5); if ((vKind > 0.5 && vKind < 1.5) || vKind > 4.5) transformed += normalize(objectNormal) * (0.008 / max(length(modelMatrix[0].xyz), 1e-6)); /* (glass a hair out of the wall it is set in: on its plane the two fought) */ vL = (modelMatrix * vec4(position, 0.0)).xyz; vP = (modelMatrix * vec4(position, 1.0)).xyz;');
     s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uNight; varying float vKind; varying vec3 vL; varying vec3 vP;')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif ((vKind > 0.5 && vKind < 1.5) || vKind > 4.5) roughnessFactor = 0.15; if (vKind > 1.5 && vKind < 2.5) roughnessFactor = 0.3;')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nif (vKind > 1.5 && vKind < 2.5) metalnessFactor = 0.9;')

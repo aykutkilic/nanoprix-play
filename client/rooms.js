@@ -92,3 +92,36 @@ export function makeGarage(W, d) {
   C.update(0, step);
   return room(W, d, G, R, { foot, clamp: (px, pz, py) => ({ x: O.x + Math.max(-LA + 0.3, Math.min(LA - 0.3, px - O.x)), z: O.z + Math.max(-LB + 0.3, Math.min(LB - 0.3, pz - O.z)), y: Math.min(py, O.y + H - 0.12) }), update: (dt) => C.update(Math.min(0.1, dt), step), start: { x: O.x - LA + 0.9, y: O.y, z: O.z, yaw: Math.PI / 2 }, atExit: (x, z) => x - O.x < -LA + 1.1 && Math.abs(z - O.z) < 1.0 });
 }
+// ---------------------------------------------------------------- a filling station's market: shelves, fridges, the till and who keeps it
+export function makeMarket(W, d) {
+  const [G, R] = start(d, d.x * 7 - d.z), O = d.O, LA = 2.6, LB = 1.6, H = 1.05, L = [], blocks = [], B = (w, h, dd, x, y, z, c, e = 0) => L.push([box(w, h, dd, x, y, z), c, e]), [c0, c1] = d.colors || ['#c8242a', '#ffffff'];
+  const COL = ['#c8242a', '#1c3f94', '#2f8f5b', '#e0b21b', '#e0559b', '#f2f2ee', '#16181c', '#b46a2c', '#3f6e8c', '#7a3b34'], pick = () => COL[Math.floor(R() * COL.length)];
+  // the room: tiled floor, white walls, a band in the brand's colour, the glass front with its door, lights in the ceiling
+  B(2 * LA, 0.04, 2 * LB, 0, -0.02, 0, '#dcd8cf'); for (let a = -LA + 0.5; a < LA; a += 0.5) B(0.012, 0.004, 2 * LB, a, 0.002, 0, '#c4bfb4'); for (let b = -LB + 0.5; b < LB; b += 0.5) B(2 * LA, 0.004, 0.012, 0, 0.002, b, '#c4bfb4');
+  B(2 * LA, H, 0.06, 0, H / 2, LB + 0.03, '#f1efe9'); for (const s of [1, -1]) B(0.06, H, 2 * LB, s * (LA + 0.03), H / 2, 0, '#f1efe9'); B(2 * LA, 0.04, 2 * LB, 0, H + 0.02, 0, '#f6f4ee');
+  for (const s of [1, -1]) B(0.065, 0.06, 2 * LB, s * (LA + 0.03), H - 0.16, 0, c0); B(2 * LA, 0.06, 0.065, 0, H - 0.16, LB + 0.03, c0);
+  B(2 * LA, 0.08, 0.06, 0, 0.04, -LB - 0.03, '#8d8a84'); B(2 * LA, 0.05, 0.06, 0, H - 0.03, -LB - 0.03, '#3a3d42'); for (const a of [-2.0, -1.2, -0.4, 0.4, 1.2, 2.0]) B(0.04, H, 0.06, a, H / 2, -LB - 0.03, '#3a3d42'); B(2 * LA, H - 0.12, 0.02, 0, (H - 0.04) / 2 + 0.04, -LB - 0.04, '#eaf6ff', 0.9); // (glass, bright with the day)
+  for (let a = -2; a <= 2; a += 1) for (const b of [-0.8, 0.4]) B(0.4, 0.012, 0.25, a, H - 0.006, b, '#fffaf0', 2.0);
+  // two gondolas of shelves, goods on both faces
+  for (const b of [-0.55, 0.35]) { B(2.0, 0.5, 0.26, -1.0, 0.25, b, '#d9d6cf'); blocks.push([-2.05, 0.05, b - 0.2, b + 0.2]); for (let r = 0; r < 3; r++) { B(2.0, 0.012, 0.3, -1.0, 0.12 + r * 0.15, b, '#8d8a84'); for (const sd of [1, -1]) for (let a = -1.95; a < -0.05; a += 0.07 + R() * 0.04) B(0.05 + R() * 0.03, 0.06 + R() * 0.05, 0.08, a, 0.13 + r * 0.15 + 0.04, b + sd * 0.09, pick()); } B(2.04, 0.08, 0.02, -1.0, 0.56, b, c0); }
+  // fridges along the back, lit, bottles in them
+  for (let a = -2.4; a < 0.9; a += 0.55) { B(0.52, 0.85, 0.3, a + 0.27, 0.425, LB - 0.16, '#2b2f33'); B(0.46, 0.75, 0.01, a + 0.27, 0.43, LB - 0.315, '#e8f6ff', 1.1); for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) L.push([cyl(0.022, 0.022, 0.12, a + 0.08 + c * 0.075, 0.1 + r * 0.18, LB - 0.2, 6), COL[(r * 3 + c) % COL.length]]); } blocks.push([-2.6, 0.95, LB - 0.36, LB]);
+  // along the left: oil and screen wash for the car, the papers; by the window the ice cream chest
+  B(0.3, 0.6, 1.4, -LA + 0.15, 0.3, 0.2, '#d9d6cf'); for (let r = 0; r < 3; r++) for (let b = -0.4; b < 0.85; b += 0.11) B(0.08, 0.1, 0.07, -LA + 0.22, 0.08 + r * 0.19, b, r === 0 ? '#e0b21b' : r === 1 ? '#1f5fbf' : '#2f8f5b'); blocks.push([-LA, -LA + 0.32, -0.55, 0.95]);
+  B(0.6, 0.3, 0.36, -1.6, 0.15, -LB + 0.3, '#f4f2ec'); B(0.6, 0.02, 0.36, -1.6, 0.31, -LB + 0.3, '#bfe6ff', 0.6); blocks.push([-1.92, -1.28, -LB + 0.1, -LB + 0.5]);
+  // the till: a counter, the register, the simit tray, the tea and coffee, cigarettes on the wall behind; who keeps it
+  B(1.3, 0.42, 0.34, 1.75, 0.21, -0.15, '#5a3a22'); B(1.34, 0.03, 0.38, 1.75, 0.435, -0.15, '#e9e2d4'); B(0.16, 0.12, 0.14, 1.35, 0.51, -0.15, '#2a2d33'); B(0.12, 0.07, 0.01, 1.35, 0.55, -0.225, '#8fe08f', 1.0);
+  B(0.3, 0.02, 0.2, 2.0, 0.455, -0.15, '#c9a36a'); for (let k = 0; k < 4; k++) L.push([new THREE.TorusGeometry(0.035, 0.014, 6, 12).rotateX(Math.PI / 2).translate(1.9 + (k % 2) * 0.08, 0.475, -0.2 + Math.floor(k / 2) * 0.09), '#b9772e']);
+  B(0.18, 0.22, 0.16, 2.35, 0.56, -0.12, '#2a2d33'); B(0.12, 0.05, 0.01, 2.35, 0.62, -0.205, '#ffb02e', 0.8);
+  B(1.6, 0.55, 0.12, 1.75, 0.6, LB - 0.06, '#3a2a22'); for (let r = 0; r < 4; r++) for (let a = 1.0; a < 2.5; a += 0.06) B(0.045, 0.08, 0.02, a, 0.4 + r * 0.13, LB - 0.13, pick());
+  blocks.push([1.05, 2.45, -0.35, 0.05]); blocks.push([0.95, LA, 0.05, LB]); // (behind the counter: the cashier's)
+  G.add(new THREE.Mesh(kit(L), kitMaterial(W)));
+  { const cv = document.createElement('canvas'); cv.width = 512; cv.height = 64; const g = cv.getContext('2d'); g.fillStyle = c0; g.fillRect(0, 0, 512, 64); g.fillStyle = c1; g.fillRect(0, 54, 512, 10); g.fillStyle = c0 === '#ffffff' || c0 === '#fbce07' ? '#222' : '#fff'; g.font = '800 36px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(`${d.name.toLocaleUpperCase('tr')} · KASA`, 256, 28, 490); plate(G, cv, 1.75, 0.92, LB - 0.13, 1.4, 0.18, Math.PI); }
+  // who is there: the cashier behind the till, a few at the shelves and the fridges
+  const C = crowd(G, R, 16), spots = [[-1.0, -1.0, 0, 1], [-1.0, 0.0, 0, -1], [-1.0, 0.9, 0, 1], [0.6, 1.0, 0, 1], [-0.3, -0.9, 0, 1]], spot = () => spots[Math.floor(R() * spots.length)];
+  C.add({ a: 1.75, b: 0.25, y: 0, still: true, hv: 0, hb: -1, coat: new THREE.Color(c0) }); for (let k = 0; k < 3; k++) { const s = spot(); C.add({ a: s[0] + (R() - 0.5) * 0.8, b: s[1], y: 0, hv: s[2], hb: s[3], pause: 2 + R() * 4 }); }
+  const step = (o) => { const s = spot(); o.go = [[s[0] + (R() - 0.5) * 1.2, s[1], s[2], s[3]]]; };
+  const foot = (x, z) => { const [a, b] = local(O, x, z); if (Math.abs(a) > LA - 0.12 || Math.abs(b) > LB - 0.12 || blocks.some(([a0, a1, b0, b1]) => a > a0 && a < a1 && b > b0 && b < b1)) return null; return O.y; };
+  C.update(0, step);
+  return room(W, d, G, R, { shop: true, name: d.name, foot, clamp: (px, pz, py) => ({ x: O.x + Math.max(-LA + 0.25, Math.min(LA - 0.25, px - O.x)), z: O.z + Math.max(-LB + 0.25, Math.min(LB - 0.25, pz - O.z)), y: Math.min(py, O.y + H - 0.15) }), update: (dt) => C.update(Math.min(0.1, dt), step), atCounter: (x, z) => { const [a, b] = local(O, x, z); return a > 0.95 && a < 2.55 && b > -0.95 && b < -0.3; }, start: { x: O.x, y: O.y, z: O.z - LB + 0.45, yaw: 0 }, atExit: (x, z) => { const [a, b] = local(O, x, z); return Math.abs(a) < 0.6 && b < -LB + 0.55; } });
+}

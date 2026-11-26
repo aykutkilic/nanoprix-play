@@ -6,7 +6,8 @@
 import * as THREE from './vendor/three.module.min.js';
 import { kit, kitMaterial, box, cyl, ball } from './squares.js';
 import { figure, COATS, SKIN, HAIR, LEGS } from './hall.js';
-import { makeGallery, makeTheatre, makeGarage } from './rooms.js';
+import { makeGallery, makeTheatre, makeGarage, makeMarket } from './rooms.js';
+import { frameOf } from './parking.js';
 
 // what else one walks into (client/rooms.js): Feshane as an art gallery, the theatres; the car parks under ground and of many floors (by their doors, tools/parking.mjs)
 const ROOMS = { 'feshane-art-center': 'gallery', 'ataturk-kultur-merkezi': 'theatre', 'sureyya-operasi': 'theatre', 'uskudar-tekel-sahneleri': 'theatre', 'uskudar-musahipzade-celal-sahnesi': 'theatre', 'cemal-resit-rey-konser-salonu': 'theatre', 'gonul-ulku-gazanfer-ozcan-sahnesi': 'theatre', 'haldun-taner-sahnesi-kadikoy': 'theatre', 'fatih-resat-nuri-sahnesi': 'theatre', 'muammer-karaca-tiyatrosu': 'theatre', 'yildiz-sarayi-tiyatro': 'theatre', 'baglarbasi-kultur-merkezi': 'theatre' };
@@ -25,10 +26,12 @@ export function buildMalls(W) {
     let best = null; const H = m.hull; for (let i = 0; i < H.length; i++) { const [ax, az] = H[i], [bx, bz] = H[(i + 1) % H.length]; for (const t of [0.25, 0.5, 0.75]) { const x = ax + (bx - ax) * t, z = az + (bz - az) * t; let d = 1e9; net.around(x, z, (r, k, tt, dd) => { if (r.style === 'motorway' || (r.tunnel && r.tunnel[k]) || (r.bridge && r.bridge[k])) return; d = Math.min(d, dd - r.hw); }); let nx = bz - az, nz = -(bx - ax); const l = Math.hypot(nx, nz) || 1; nx /= l; nz /= l; if ((x - m.x) * nx + (z - m.z) * nz < 0) { nx = -nx; nz = -nz; } if (d > 0.6 && (!best || d < best.d)) best = { d, x: x + nx * 0.14, z: z + nz * 0.14, nx, nz }; } }
     if (!best) continue; const y = W.height(best.x, best.z), name = m.name.replace(/\s+AVM$/i, '').replace(/\s*\(.*\)/, '').replace(/^\w/, (c) => c.toLocaleUpperCase('tr')), yaw = Math.atan2(best.nx, best.nz);
     list.push({ kind, m, name, x: best.x, y, z: best.z, nx: best.nx, nz: best.nz, yaw, O: { x: m.x, y: -DEPTH, z: m.z } }); }
+  // the filling stations' markets: their own glass door (client/parking.js draws it), in by it
+  for (const st of (W.A.parking && W.A.parking.stations) || []) { const f = (st.f ||= frameOf(st)), [x, z] = f.at(-0.45, 3.18), [x1, z1] = f.at(-0.45, 2.18), l = Math.hypot(x1 - x, z1 - z) || 1, nx = (x1 - x) / l, nz = (z1 - z) / l; list.push({ kind: 'market', m: { id: `market-${st.x}-${st.z}` }, name: st.brand === 'Shell' ? 'Shell Select' : `${st.brand} Market`, colors: st.c, x, y: st.y, z, nx, nz, yaw: Math.atan2(nx, nz), O: { x: st.x, y: -DEPTH, z: st.z } }); }
   if (!list.length) return;
   // its door: dark glass in a steel frame, a canopy, and over it the name
   const door = kit([[box(1.5, 1.08, 0.1, 0, 0.54, 0), '#2b3036'], [box(1.24, 0.94, 0.02, 0, 0.5, 0.055), '#8fb3c2', 0.55], [box(0.02, 0.94, 0.025, 0, 0.5, 0.07), '#2b3036'], [box(1.9, 0.05, 0.7, 0, 1.12, 0.3), '#e8e6e0'], [box(0.04, 1.12, 0.04, -0.9, 0.56, 0.62), '#9aa0a6'], [box(0.04, 1.12, 0.04, 0.9, 0.56, 0.62), '#9aa0a6']]), mat = kitMaterial(W), dm = new THREE.InstancedMesh(door, mat, Math.max(1, list.length)), M = new THREE.Matrix4(), Q = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0);
-  const signed = list.filter((d) => d.kind !== 'garage'); const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 96 * signed.length; const g = cv.getContext('2d'); g.textAlign = 'center'; g.textBaseline = 'middle';
+  const signed = list.filter((d) => d.kind !== 'garage' && d.kind !== 'market'); const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 96 * signed.length; const g = cv.getContext('2d'); g.textAlign = 'center'; g.textBaseline = 'middle';
   signed.forEach((d, k) => { M.compose(new THREE.Vector3(d.x, d.y, d.z), Q.setFromAxisAngle(UP, d.yaw), new THREE.Vector3(1, 1, 1)); dm.setMatrixAt(k, M); g.fillStyle = d.kind === 'theatre' ? '#5a1e22' : d.kind === 'gallery' ? '#2f3d36' : '#1b1d21'; g.fillRect(0, k * 96, 1024, 96); g.fillStyle = '#fff'; g.font = '800 50px "Arial Narrow", Arial, sans-serif'; g.fillText(d.name.toLocaleUpperCase('tr'), 512, k * 96 + 40, 990); g.fillStyle = '#ffb21c'; g.font = '700 22px "Arial Narrow", Arial, sans-serif'; g.fillText('GİRİŞ · ENTRANCE', 512, k * 96 + 78); });
   dm.castShadow = dm.receiveShadow = true; dm.computeBoundingSphere(); W.root.add(dm);
   // the car parks in buildings and under ground: by their door a blue P on a post, the way in on foot
@@ -39,7 +42,7 @@ export function buildMalls(W) {
 }
 // ---------------------------------------------------------------- inside: made when one goes in
 export function makeMall(W, d) {
-  if (d.kind === 'gallery') return makeGallery(W, d); if (d.kind === 'theatre') return makeTheatre(W, d); if (d.kind === 'garage') return makeGarage(W, d);
+  if (d.kind === 'market') return makeMarket(W, d); if (d.kind === 'gallery') return makeGallery(W, d); if (d.kind === 'theatre') return makeTheatre(W, d); if (d.kind === 'garage') return makeGarage(W, d);
   const O = d.O, G = new THREE.Group(); G.position.set(O.x, O.y, O.z); G.userData.below = true; let seed = Math.floor(Math.abs(d.m.x * 31 + d.m.z * 17)) >>> 0 || 1; const R = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
   const L = [], glass = [], signs = [], menus = [], blocks = []; // (blocks: where one may not stand, [a0, a1, b0, b1])
   const B = (w, h, dd, x, y, z, c, e = 0) => L.push([box(w, h, dd, x, y, z), c, e]);

@@ -31,7 +31,7 @@ export class Network {
     const deg = new Map(); for (const r of this.main) for (const e of [r.a, r.b]) deg.set(e, (deg.get(e) || 0) + 1);
     const ends = this.spurs.filter((r) => !r.id.startsWith('p')).map((r) => ({ id: null, x: r.p[r.n * 3 - 3], z: r.p[r.n * 3 - 2], h: r.p[r.n * 3 - 1], r: r.hw })); // (a side street ends round)
     for (const h of [...this.hubs.values(), ...ends]) { const d = { hub: h.id, x: h.x, z: h.z, r: h.r || 3, h: h.h, deg: deg.get(h.id) || 1 }; this.discs.push(d); for (let a = Math.floor((h.x - d.r) / 4); a <= Math.floor((h.x + d.r) / 4); a++) for (let b = Math.floor((h.z - d.r) / 4); b <= Math.floor((h.z + d.r) / 4); b++) { const k = a * 8192 + b; if (!this.dcells) this.dcells = new Map(); let q = this.dcells.get(k); if (!q) this.dcells.set(k, (q = [])); q.push(d); } }
-    for (const r of this.main) for (const [a, b] of [[r.a, r.b], [r.b, r.a]]) { if (!this.adj.has(a)) this.adj.set(a, []); this.adj.get(a).push({ to: b, r }); }
+    for (const r of this.main) for (const [a, b] of [[r.a, r.b], [r.b, r.a]]) { if (!this.adj.has(a)) this.adj.set(a, []); this.adj.get(a).push({ to: b, r, go: !r.one || a === r.a }); } // (go: one may drive that way – a one-way road, `one`, only from a to b)
     // a junction is as wide as what meets there, not round: the hull of its roads' edges where they leave it (where no road goes, its edge is straight)
     for (const d of this.discs) { if (!d.hub) continue; const E = []; for (const r of [...this.main, ...this.spurs]) { const n = r.n, P = r.p; for (const e of [0, n - 1]) { if (Math.hypot(P[e * 3] - d.x, P[e * 3 + 1] - d.z) > d.r + 0.8 || Math.abs(P[e * 3 + 2] - d.h) > 1.2) continue; const s = e ? -1 : 1; let i = e; while (i + s >= 0 && i + s < n && Math.hypot(P[i * 3] - d.x, P[i * 3 + 1] - d.z) < d.r) i += s; const j = Math.max(0, Math.min(n - 1, i - s)), dx = P[i * 3] - P[j * 3], dz = P[i * 3 + 1] - P[j * 3 + 1], l = Math.hypot(dx, dz) || 1, w = r.hw + 0.05; E.push([P[i * 3] - (dz / l) * w, P[i * 3 + 1] + (dx / l) * w], [P[i * 3] + (dz / l) * w, P[i * 3 + 1] - (dx / l) * w]); } }
       if (E.length < 4) continue; const S = [...E].sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = []; for (const p of S) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); } for (const p of S.reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); } const H = [...lo.slice(0, -1), ...up.slice(0, -1)];
@@ -102,13 +102,19 @@ export class Network {
     return null;
   }
 
+  // the place `s` along road r, `lat` right of the way it runs (a → b)
+  along(r, s, lat = 0, out = {}) {
+    s = Math.max(0, Math.min(r.len, s)); let lo = 0, hi = r.n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (r.s[m] <= s) lo = m; else hi = m; }
+    const a = lo * 3, t = (s - r.s[lo]) / Math.max(1e-6, r.s[lo + 1] - r.s[lo]), dx = r.p[a + 3] - r.p[a], dz = r.p[a + 4] - r.p[a + 1], l = Math.hypot(dx, dz) || 1;
+    out.dx = dx / l; out.dz = dz / l; out.x = r.p[a] + dx * t - out.dz * lat; out.z = r.p[a + 1] + dz * t + out.dx * lat; out.y = r.p[a + 2] + (r.p[a + 5] - r.p[a + 2]) * t; out.slope = (r.p[a + 5] - r.p[a + 2]) / l; out.yaw = Math.atan2(out.dx, out.dz); return out;
+  }
   // is a car in the tunnel (2), in a cutting (1), or neither?
   under(c) { const q = this.at(c.x, c.z, c.y + 0.15, null, (this.uq ||= {})); return q && q.road.tunnel ? q.road.tunnel[q.i] : 0; }
 
   // from a hub to the next by hubs that were put on the way (`+…`: where a road drawn by hand meets another)
   through(a, b) {
     const best = new Map([[a, 0]]), prev = new Map(), open = [a];
-    while (open.length) { open.sort((p, q) => best.get(q) - best.get(p)); const h = open.pop(); if (h === b) break; if (h !== a && h[0] !== '+') continue; for (const e of this.adj.get(h) || []) { const d = best.get(h) + e.r.len; if (d < (best.get(e.to) ?? Infinity)) { best.set(e.to, d); prev.set(e.to, [h, e.r]); if (!open.includes(e.to)) open.push(e.to); } } }
+    while (open.length) { open.sort((p, q) => best.get(q) - best.get(p)); const h = open.pop(); if (h === b) break; if (h !== a && h[0] !== '+') continue; for (const e of this.adj.get(h) || []) { if (!e.go) continue; const d = best.get(h) + e.r.len; if (d < (best.get(e.to) ?? Infinity)) { best.set(e.to, d); prev.set(e.to, [h, e.r]); if (!open.includes(e.to)) open.push(e.to); } } }
     if (!prev.has(b)) throw new Error(`no road ${a} → ${b}`);
     const out = []; for (let h = b; h !== a;) { const [p, r] = prev.get(h); out.unshift([r, r.a === p ? 1 : -1]); h = p; } return out;
   }
@@ -116,7 +122,7 @@ export class Network {
   pathRoads(hubs) {
     const out = [];
     for (let k = 0; k < hubs.length; k++) {
-      const a = hubs[k], b = hubs[(k + 1) % hubs.length], best = this.adj.get(a).filter((e) => e.to === b).sort((p, q) => p.r.len - q.r.len)[0];
+      const a = hubs[k], b = hubs[(k + 1) % hubs.length], best = this.adj.get(a).filter((e) => e.to === b && e.go).sort((p, q) => p.r.len - q.r.len)[0];
       if (!best) { out.push(...this.through(a, b)); continue; }
       out.push([best.r, best.r.a === a ? 1 : -1]);
     }
@@ -131,9 +137,9 @@ export class Course {
     const hubs = reverse ? [def.hubs[0], ...def.hubs.slice(1).reverse()] : def.hubs;
     const path = net.pathRoads(hubs), pts = [];
     this.only = new Set(path.map(([r]) => r.index));
-    for (const [r, dir] of path) for (let k = 0; k + 1 < r.n; k++) { const i = dir > 0 ? k : r.n - 1 - k; pts.push([r.p[i * 3], r.p[i * 3 + 1], r.p[i * 3 + 2], r.hw, r.index, r.tunnel ? r.tunnel[i] : 0, r.bus ? 1 : 0, r.tram ? 1 : 0]); }
+    for (const [r, dir] of path) for (let k = 0; k + 1 < r.n; k++) { const i = dir > 0 ? k : r.n - 1 - k; pts.push([r.p[i * 3], r.p[i * 3 + 1], r.p[i * 3 + 2], r.hw, r.index, r.tunnel ? r.tunnel[i] : 0, r.bus ? 1 : 0, r.tram ? 1 : 0, i]); }
     this.n = pts.length;
-    this.x = Float32Array.from(pts, (p) => p[0]); this.z = Float32Array.from(pts, (p) => p[1]); this.h = Float32Array.from(pts, (p) => p[2]); this.hw = Float32Array.from(pts, (p) => p[3]); this.road = Uint16Array.from(pts, (p) => p[4]);
+    this.x = Float32Array.from(pts, (p) => p[0]); this.z = Float32Array.from(pts, (p) => p[1]); this.h = Float32Array.from(pts, (p) => p[2]); this.hw = Float32Array.from(pts, (p) => p[3]); this.road = Uint16Array.from(pts, (p) => p[4]); this.ri = Uint16Array.from(pts, (p) => p[8]); // (and which of its samples)
     this.tunnel = Uint8Array.from(pts, (p) => p[5]);
     this.bus = Float32Array.from(pts, (p) => p[6]); for (let k = 0; k < 6; k++) { const o = this.bus.slice(); for (let i = 0; i < this.n; i++) this.bus[i] = (o[(i - 1 + this.n) % this.n] + o[i] + o[(i + 1) % this.n]) / 3; } // (the metrobüs has the middle of it: traffic keeps out)
     this.tram = Float32Array.from(pts, (p) => p[7]); for (let k = 0; k < 6; k++) { const o = this.tram.slice(); for (let i = 0; i < this.n; i++) this.tram[i] = (o[(i - 1 + this.n) % this.n] + o[i] + o[(i + 1) % this.n]) / 3; } // (and of these a tram)

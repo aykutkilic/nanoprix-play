@@ -188,7 +188,7 @@ export function buildTransit(W) {
     });
   }
   // Terminal Kadıköy, below the viaduct: its name at the road
-  { const m = W.marks.find((q) => /^kadikoy-terminal/.test(q.id)); if (m && rail) { let b = null; for (let i = 0; i < rail.n; i++) if (rail.st[i] === 1) { const d = Math.hypot(rail.p[i * 3] - 464.5, rail.p[i * 3 + 1] - 303.5); if (!b || d < b.d) b = { d, i }; } if (b) for (const s of [1, -1]) { const f = rail.frame(rail.s[b.i] + 0); for (const sd of [1, -1]) if (s > 0) board('SÖĞÜTLÜÇEŞME  ·  TERMİNAL KADIKÖY', 'rail', f[0] - f[4] * sd * 1.13, f[1] - 0.02, f[2] + f[3] * sd * 1.13, yawOf(f) + sd * Math.PI / 2, 3.6, 0.3); } } }
+  { if (rail) { let b = null; for (let i = 0; i < rail.n; i++) if (rail.st[i] === 1) { const d = Math.hypot(rail.p[i * 3] - 464.5, rail.p[i * 3 + 1] - 303.5); if (!b || d < b.d) b = { d, i }; } if (b) for (const s of [1, -1]) { const f = rail.frame(rail.s[b.i] + 0); for (const sd of [1, -1]) if (s > 0) board('SÖĞÜTLÜÇEŞME  ·  TERMİNAL KADIKÖY', 'rail', f[0] - f[4] * sd * 1.13, f[1] - 0.02, f[2] + f[3] * sd * 1.13, yawOf(f) + sd * Math.PI / 2, 3.6, 0.3); } } }
   batch.flush(W);
   // ---------------------------------------------------------------- the little things
   inst(new THREE.BoxGeometry(1.0, 1, 0.7).translate(0, 0.5, 0), mat('#9a948a', { roughness: 0.9 }), piers, turned, true, 1.1); inst(new THREE.CylinderGeometry(0.5, 0.5, 1, 8).translate(0, 0.5, 0), dark, posts, turned, true, 0.7); inst(new THREE.BoxGeometry(0.06, 0.03, 0.5), glow, lamps, turned, false, 0.6);

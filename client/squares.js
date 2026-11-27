@@ -55,6 +55,8 @@ function shapes() {
   { const g = new THREE.IcosahedronGeometry(1, 2), p = g.attributes.position; for (let k = 0; k < p.count; k++) { const x = p.getX(k), y = p.getY(k), z = p.getZ(k), f = 0.82 + 0.28 * Math.abs(Math.sin(x * 5.1 + y * 3.3) * Math.cos(z * 4.7 + y)); p.setXYZ(k, x * f, y * f * 0.92, z * f); } const n = g.attributes.normal, v = new THREE.Vector3(); for (let k = 0; k < p.count; k++) { v.fromBufferAttribute(p, k).normalize(); n.setXYZ(k, v.x, v.y, v.z); } S.crown = g; }
   S.head = kit([[ball(0.043, 0, 0.375, 0, 8), '#d9a27c'], [ball(0.044, 0, 0.39, -0.012, 8), '#2b2019'], [cyl(0.034, 0.03, 0.13, 0.022, 0, 0, 6), '#2a2d36'], [cyl(0.034, 0.03, 0.13, -0.022, 0, 0, 6), '#2a2d36']]);
   S.person = kit([[new THREE.CapsuleGeometry(0.048, 0.13, 3, 8).translate(0, 0.21, 0), '#ffffff']]);
+  // a café's table: round, two chairs, a parasol
+  S.table = kit([[cyl(0.012, 0.012, 0.15), IRON], [cyl(0.11, 0.11, 0.015, 0, 0.15, 0, 14), '#e9e4da'], ...[-1, 1].flatMap((s) => [[box(0.09, 0.012, 0.09, s * 0.17, 0.09, 0), '#3b3f44'], [box(0.012, 0.1, 0.09, s * 0.215, 0.14, 0), '#3b3f44'], [box(0.012, 0.09, 0.012, s * 0.13, 0.045, 0.04), IRON], [box(0.012, 0.09, 0.012, s * 0.13, 0.045, -0.04), IRON]]), [cyl(0.008, 0.008, 0.46, 0, 0.15, 0, 6), '#d9d6cf'], [new THREE.ConeGeometry(0.27, 0.09, 10).translate(0, 0.64, 0), '#efe8d8']]);
   return S;
 }
 // ---------------------------------------------------------------- what there is one of
@@ -90,6 +92,22 @@ export function inSetts(A) {
   const list = A.squares ? A.squares.areas.filter((a) => a.kind === 1).map(({ rings: [r] }) => ({ r, x0: Math.min(...r.map((p) => p[0])), x1: Math.max(...r.map((p) => p[0])), z0: Math.min(...r.map((p) => p[1])), z1: Math.max(...r.map((p) => p[1])) })) : [];
   return (x, z) => list.some(({ r, x0, x1, z0, z1 }) => { if (x < x0 || x > x1 || z < z0 || z > z1) return false; let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) if (r[i][1] > z !== r[j][1] > z && x < ((r[j][0] - r[i][0]) * (z - r[i][1])) / (r[j][1] - r[i][1]) + r[i][0]) c = !c; return c; });
 }
+// one of Terminal Kadıköy's houses: s = { q: its outline, y: its floor, h: how high, names }
+function shopHouse(s, stuff) {
+  const G = new THREE.Group(), L = [], c = s.q.reduce((o, p) => [o[0] + p[0] / s.q.length, o[1] + p[1] / s.q.length], [0, 0]), h = s.h, band = 0.13, glass = h - band;
+  for (let i = 0; i < s.q.length; i++) {
+    const [ax, az] = s.q[i], [bx, bz] = s.q[(i + 1) % s.q.length], l = Math.hypot(bx - ax, bz - az); if (l < 0.02) continue; const yaw = Math.atan2(bx - ax, bz - az), mx = (ax + bx) / 2 - c[0], mz = (az + bz) / 2 - c[1], at = (g, u = 0) => g.rotateY(yaw).translate(mx + ((bx - ax) / l) * u, 0, mz + ((bz - az) / l) * u);
+    L.push([at(box(0.04, glass, l + 0.02, 0, glass / 2 - 0.05, 0)), '#5d7680', 1], [at(box(0.07, band, l + 0.06, 0, glass + band / 2 - 0.05, 0)), '#22282c'], [at(box(0.09, 0.05, l + 0.06, 0, -0.03, 0)), '#3a3e42']);
+    for (let u = -l / 2; u <= l / 2 + 1e-3; u += Math.max(0.42, l / Math.max(1, Math.round(l / 0.5)))) L.push([at(box(0.055, glass, 0.025, 0, glass / 2 - 0.05, 0), u), '#1c2024']);
+  }
+  { const sh = new THREE.Shape(s.q.map(([x, z]) => { const dx = x - c[0], dz = z - c[1], d = Math.hypot(dx, dz) || 1; return new THREE.Vector2(dx + (dx / d) * 0.14, -(dz + (dz / d) * 0.14)); })); L.push([new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false }).rotateX(-Math.PI / 2).translate(0, h - 0.05, 0), '#cfc8ba']); }
+  const m = new THREE.Mesh(kit(L), stuff); m.castShadow = m.receiveShadow = true; G.add(m);
+  // the names, on the band of each side long enough to hold them
+  const text = (s.names.length ? s.names : ['Terminal Kadıköy']).slice(0, 3).join('  ·  ').toLocaleUpperCase('tr'), cv = document.createElement('canvas'); cv.width = 1024; cv.height = 96; const g = cv.getContext('2d'); g.fillStyle = '#22282c'; g.fillRect(0, 0, 1024, 96); g.fillStyle = '#f3e4c0'; g.font = '700 50px "Arial Narrow", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 512, 50, 990);
+  const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace; tx.anisotropy = 4; const mat = new THREE.MeshStandardMaterial({ map: tx, emissive: '#ffffff', emissiveMap: tx, emissiveIntensity: 0.35, roughness: 0.6 });
+  for (let i = 0; i < s.q.length; i++) { const [ax, az] = s.q[i], [bx, bz] = s.q[(i + 1) % s.q.length], l = Math.hypot(bx - ax, bz - az); if (l < 1.5) continue; const nx = (bz - az) / l, nz = -(bx - ax) / l, mx = (ax + bx) / 2, mz = (az + bz) / 2, out = Math.hypot(mx + nx * 0.1 - c[0], mz + nz * 0.1 - c[1]) > Math.hypot(mx - c[0], mz - c[1]) ? 1 : -1, w = Math.min(l - 0.2, 3.2), o = new THREE.Mesh(new THREE.PlaneGeometry(w, band * 0.8), mat); o.position.set(mx - c[0] + nx * out * 0.04, h - band / 2 - 0.05, mz - c[1] + nz * out * 0.04); o.rotation.y = Math.atan2(nx * out, nz * out); G.add(o); }
+  G.position.set(c[0], s.y, c[1]); return G;
+}
 export function buildSquares(W) {
   const D = W.A.squares; if (!D) return; const { A } = W, g = A.map.grid, M = new THREE.Matrix4(), Q = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0), P0 = new THREE.Vector3(), S0 = new THREE.Vector3();
   const inside = (p, x, z) => { let r = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) if ((p[i][1] > z) !== (p[j][1] > z) && x < ((p[j][0] - p[i][0]) * (z - p[i][1])) / (p[j][1] - p[i][1]) + p[i][0]) r = !r; return r; };
@@ -101,9 +119,9 @@ export function buildSquares(W) {
   const bedAt = (x, z) => { let best = null; for (const [a, b] of beds.get(Math.floor(x / 4) * 8192 + Math.floor(z / 4)) || []) { const ex = b[0] - a[0], ez = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / (ex * ex + ez * ez || 1))), d = Math.hypot(x - a[0] - ex * t, z - a[1] - ez * t); if (!best || d < best[0]) best = [d, a[2] + (b[2] - a[2]) * t]; } return best; };
   const smooth1 = (t) => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
   W.paved = (x, z) => {
-    let k = null; for (const { a, x0, x1, z0, z1 } of areas) if (x > x0 && x < x1 && z > z0 && z < z1 && inside(a.rings[0], x, z) && !a.rings.slice(1).some((h) => inside(h, x, z))) { k = a.kind; break; } if (k === null) return null;
+    let k = null; for (const { a, x0, x1, z0, z1 } of areas) if (x > x0 && x < x1 && z > z0 && z < z1 && inside(a.rings[0], x, z) && !a.rings.slice(1).some((h) => inside(h, x, z))) { k = a.quay ? 2 : a.kind; break; } if (k === null) return null;
     for (const m of W.marks) if (Math.abs(m.x - x) < m.r && Math.abs(m.z - z) < m.r && inside(m.hull, x, z)) return null;
-    const g = ground(x, z), b = beds.size ? bedAt(x, z) : null; if (b && b[0] < 0.62) return b[1] + 0.02; /* (on a tram's bed) */ const y = b && b[0] < 0.86 ? g + Math.min(D.lift, 0.06 + (D.lift - 0.06) * smooth1((b[0] - 0.7) / 0.16)) : g + D.lift; return k === 2 && W.coast(x, z) < 2.5 ? Math.max(y, 0.42) : y;
+    const g = ground(x, z), b = beds.size ? bedAt(x, z) : null; if (b && b[0] < 0.62) return b[1] + 0.02; /* (on a tram's bed) */ const y = b && b[0] < 0.86 ? g + Math.min(D.lift, 0.06 + (D.lift - 0.06) * smooth1((b[0] - 0.7) / 0.16)) : g + D.lift; return k === 2 ? Math.max(y, W.coast(x, z) < 2.5 ? 0.42 : 0.04) : y;
   };
   const pave = paving(W), stuff = kitMaterial(W), leaf = weathered(new THREE.MeshStandardMaterial({ roughness: 0.95 }), { snow: 0.85, wet: 0.2, shine: 0.6 }), T = shapes(), sight = sights(), groups = [], B = A.squaresBin; let o = 0;
   for (const p of D.parts) {
@@ -117,7 +135,7 @@ export function buildSquares(W) {
   }
   const home = (x, z) => groups.reduce((b, q) => { const d = Math.hypot(q.x - x, q.z - z) - q.p.r; return d < b[0] ? [d, q] : b; }, [1e9, null])[1];
   for (const [k, list] of Object.entries(D.things)) for (const e of list) { const q = home(e[0], k === 'string' ? e[2] : e[2]); (q.things[k] ||= []).push(e); }
-  const post = { lamp: [0.06, 1.2], planter: [0.17, 0.4], simit: [0.24, 0.6], kiosk: [0.5, 0.9], flag: [0.1, 3], bench: [0.2, 0.3], tree: [0.07, 0.6] };
+  const post = { lamp: [0.06, 1.2], planter: [0.17, 0.4], simit: [0.24, 0.6], kiosk: [0.5, 0.9], flag: [0.1, 3], bench: [0.2, 0.3], tree: [0.07, 0.6], table: [0.26, 0.6] };
   for (const q of groups) {
     const put = (geo, mat, list, fn, cast = true, col = null) => { if (!list.length) return; const m = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((e, i) => { fn(e, i); m.setMatrixAt(i, M); if (col) m.setColorAt(i, col(e, i)); }); m.castShadow = cast; m.receiveShadow = true; m.computeBoundingSphere(); q.small.add(m); return m; }, turned = ([x, y, z, a]) => M.compose(P0.set(x, y, z), Q.setFromAxisAngle(UP, a), S0.set(1, 1, 1)), tint = new THREE.Color();
     for (const [k, list] of Object.entries(q.things)) {
@@ -130,6 +148,8 @@ export function buildSquares(W) {
     }
     // the sights
     for (const s of D.sites) if (home(s.x, s.z) === q && sight[s.kind]) { const m = new THREE.Mesh(sight[s.kind](s), stuff); m.position.set(s.x, s.y, s.z); m.rotation.y = s.yaw; m.castShadow = m.receiveShadow = true; q.G.add(m); if (s.kind !== 'gezi' && s.kind !== 'flowers') (W.posts ||= []).push([s.x, s.y, s.z, s.r * 0.95, 2]); }
+    // the shops' glass houses (Terminal Kadıköy): glass all round between thin posts, a band with the names of what is inside, lit at night, a flat roof
+    for (const s of D.shops || []) if (home(s.q[0][0], s.q[0][1]) === q) { q.G.add(shopHouse(s, stuff)); for (let i = 0; i < s.q.length; i++) { const [ax, az] = s.q[i], [bx, bz] = s.q[(i + 1) % s.q.length], l = Math.hypot(bx - ax, bz - az); for (let u = 0; u <= l; u += 0.3) (W.posts ||= []).push([ax + ((bx - ax) * u) / l, s.y, az + ((bz - az) * u) / l, 0.16, s.h]); } }
     // who walks there
     const walks = D.walks.filter((w) => w[0] === q.p.site).map((w, i) => ({ a: [w[1], w[2]], b: [w[3], w[4]], l: Math.hypot(w[3] - w[1], w[4] - w[2]), v: 0.16 + ((i * 0.37) % 1) * 0.12, t: i * 3.7 }));
     for (const s of D.streets) if (s.site === q.p.site) { const C = [0]; for (let i = 1; i < s.p.length; i++) C.push(C[i - 1] + Math.hypot(s.p[i][0] - s.p[i - 1][0], s.p[i][1] - s.p[i - 1][1])); const len = C[C.length - 1], n = Math.round(len * (s.site === 'istiklal' ? 0.95 : 0.7)); for (let i = 0; i < n; i++) walks.push({ s: s.p, C, len, at: (i * 0.618 * len) % len, u: (0.72 + ((i * 0.733) % 1) * 0.72) * (i % 2 ? 1 : -1), d: (i * 7) % 5 < 2 ? 1 : -1, v: 0.18 + ((i * 0.37) % 1) * 0.14 }); }
@@ -144,7 +164,7 @@ export function buildSquares(W) {
   W.updates.push((dt, now, cam, far) => {
     for (const q of groups) {
       const d = Math.hypot(q.x - cam.x, q.z - cam.z) - q.p.r, F = far || 300; q.G.visible = d < F * 0.95; q.small.visible = d < Math.min(110, F * 0.6); if (!q.walk) continue; const on = (q.walk.m.visible = q.walk.h.visible = d < 45); if (!on) continue;
-      const m = q.walk.m, T1 = now / 1000; q.walk.list.forEach((w, i) => { spot(w, T1, at); if (w.last === undefined || (i + q.tick) % 8 === 0) w.last = ground(at[0], at[1]) + D.lift; const hop = Math.abs(Math.sin(T1 * 7 * (0.8 + w.v) + i)) * 0.02; M.compose(P0.set(at[0], w.last + hop, at[1]), Q.setFromAxisAngle(UP, at[2]), S0.set(1, 1, 1)); m.setMatrixAt(i, M); }); q.tick = ((q.tick || 0) + 1) % 8; m.instanceMatrix.needsUpdate = true;
+      const m = q.walk.m, T1 = now / 1000; q.walk.list.forEach((w, i) => { spot(w, T1, at); if (w.last === undefined || (i + q.tick) % 8 === 0) w.last = W.paved(at[0], at[1]) ?? ground(at[0], at[1]) + D.lift; /* (on the paving as one walks it: a quay stands higher by the water) */ const hop = Math.abs(Math.sin(T1 * 7 * (0.8 + w.v) + i)) * 0.02; M.compose(P0.set(at[0], w.last + hop, at[1]), Q.setFromAxisAngle(UP, at[2]), S0.set(1, 1, 1)); m.setMatrixAt(i, M); }); q.tick = ((q.tick || 0) + 1) % 8; m.instanceMatrix.needsUpdate = true;
     }
   });
 }

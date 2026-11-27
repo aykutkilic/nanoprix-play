@@ -69,7 +69,7 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
         grass = mix(grass, vec3(0.045, 0.098, 0.026), park * 0.6) * (0.72 + n3.b * 0.56);
         vec3 soil = vec3(0.235, 0.190, 0.130) * (0.75 + n3.g * 0.5);
         vec3 c = mix(grass, soil, smoothstep(0.55, 0.8, n2.r) * 0.5 * (1.0 - park));
-        vec3 town = mix(vec3(0.30, 0.275, 0.24), vec3(0.235, 0.225, 0.215), n0.r) * (0.86 + n3.g * 0.28);
+        vec3 town = mix(vec3(0.262, 0.256, 0.246), vec3(0.212, 0.210, 0.207), n0.r) * (0.86 + n3.g * 0.28); // (paving and asphalt between the houses, not bare earth)
         c = mix(c, town, smoothstep(0.02, 0.4, gUrban) * 0.85);
         c = mix(c, vec3(0.25, 0.225, 0.19) * (0.6 + n3.r * 0.8), smoothstep(0.88, 0.62, vUpN) * 0.9);
         float shore = (texture2D(uShore, auv).r - 0.5) * 24.0 + (n2.g - 0.5) * 0.7;
@@ -149,20 +149,21 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   const wake = (W.wake = { value: Array.from({ length: 12 }, () => new THREE.Vector4(0, 0, 0, 1e4)) }); W.wakeV = { value: new Array(12).fill(0) }; // boats: x, z, heading, length; and how fast, 0 … 1
   const sea = new THREE.MeshPhysicalMaterial({ color: '#0d3f55', roughness: 0.09, metalness: 0, ior: 1.33, specularIntensity: 1, envMapIntensity: 1.15 });
   sea.onBeforeCompile = (s) => {
-    Object.assign(s.uniforms, { uNoise: { value: noiseTexture() }, uShore: { value: shoreTex }, uArea: { value: area }, uTime: time, uNight: night, uMoon: { value: MOON_DIR }, uLamps: { value: lampTex }, uWake: wake, uWakeV: W.wakeV, uSwell: surf.swell, uRain: surf.rain }); cutAway(s);
+    Object.assign(s.uniforms, { uNoise: { value: noiseTexture() }, uShore: { value: shoreTex }, uArea: { value: area }, uTime: time, uNight: night, uMoon: { value: MOON_DIR }, uLamps: { value: lampTex }, uWake: wake, uWakeV: W.wakeV, uSwell: surf.swell, uRain: surf.rain, uMouth: W.mouths }); cutAway(s);
     s.uniforms.uEdge = { value: new THREE.Vector4(g.x0, g.z0, g.x0 + (g.w - 1) * g.step, g.z0 + (g.h - 1) * g.step) };
     s.vertexShader = s.vertexShader.replace('#include <common>', `#include <common>
       varying vec3 vW; uniform sampler2D uShore; uniform vec4 uArea, uEdge; uniform float uTime, uSwell; ${SWELL_GLSL}`).replace('#include <begin_vertex>', `#include <begin_vertex>
       { vec4 w4 = modelMatrix * vec4(position, 1.0); w4.xz = clamp(w4.xz, uEdge.xy, uEdge.zw); float sh = (texture2D(uShore, (w4.xz - uArea.xy) / uArea.zw).r - 0.5) * 24.0, shelter = smoothstep(-0.9, -7.9, sh); w4.y += swell(w4.xz, uTime).x * uSwell * shelter; vW = w4.xyz; transformed = w4.xyz - modelMatrix[3].xyz; }`);
     s.fragmentShader = s.fragmentShader.replace('#include <common>', `#include <common>
         uniform float uSwell, uRain; ${SWELL_GLSL}
-        uniform sampler2D uNoise, uShore, uLamps; uniform vec4 uArea; uniform vec4 uWake[12]; uniform float uWakeV[12]; uniform float uTime, uNight; uniform vec3 uMoon; varying vec3 vW;
+        uniform sampler2D uNoise, uShore, uLamps; uniform vec4 uArea; uniform vec4 uMouth[${W.mouths.value.length}]; uniform vec4 uWake[12]; uniform float uWakeV[12]; uniform float uTime, uNight; uniform vec3 uMoon; varying vec3 vW;
         float wave(vec2 p) {
           return texture2D(uNoise, p * 0.030 + vec2(uTime * 0.0060, uTime * 0.0042)).r * 1.6 + texture2D(uNoise, p * 0.085 - vec2(uTime * 0.011, -uTime * 0.007)).g * 0.62
             + texture2D(uNoise, p * 0.26 + vec2(-uTime * 0.013, uTime * 0.018)).g * 0.17;
         }`)
       .replace('#include <map_fragment>', `
         float shore = (texture2D(uShore, (vW.xz - uArea.xy) / uArea.zw).r - 0.5) * 24.0 * 0.28; if (shore > 0.45) discard;
+        for (int k = 0; k < ${W.mouths.value.length}; k++) { vec2 md = vW.xz - uMouth[k].xy; float al = dot(md, uMouth[k].zw), la = abs(dot(md, vec2(-uMouth[k].w, uMouth[k].z))); if (al > -26.0 && al < 1.0 && la < 2.4) discard; } /* (no sea in a tunnel's cutting near the shore: Kumkapı) */
         float deep = smoothstep(-0.05, -1.5, shore);
         vec3 wc = mix(vec3(0.060, 0.235, 0.245), vec3(0.012, 0.082, 0.135), deep);
         float big = texture2D(uNoise, vW.xz * 0.0045 + uTime * 0.0008).r;

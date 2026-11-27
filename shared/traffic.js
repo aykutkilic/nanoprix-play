@@ -33,7 +33,12 @@ function gone(v, course, t) {
 // where vehicle v is, t seconds into the race
 export function trafficAt(v, course, t, out = {}) {
   const [d, speed] = gone(v, course, t);
-  const sc = v.s0 + v.dir * d; course.place(sc + 2.2, 0, A); course.place(sc - 2.2, 0, B); course.place(sc, 0, P); { const x = A.x - B.x, z = A.z - B.z, l = Math.hypot(x, z) || 1; P.dx = x / l; P.dz = z / l; P.yaw = Math.atan2(P.dx, P.dz); } // (round a corner the lane swings gently)
+  const sc = v.s0 + v.dir * d; course.place(sc, 0, P);
+  const R = v.dir < 0 && course.net.roads[course.road[P.i]]; if (R && R.one && R.pair) { // (a one-way road against its way: on the road that runs the other way, its pair)
+    const Q = course.net.byId.get(R.pair), k = course.ri[P.i], f = (R.s[k] + (R.s[Math.min(R.n - 1, k + 1)] - R.s[k]) * P.t) / R.len, q = course.net.along(Q, Q.len * (1 - f), Q.hw * v.lane, P);
+    Object.assign(out, { x: q.x, z: q.z, y: q.y, yaw: q.yaw, vx: q.dx * speed, vz: q.dz * speed, slope: q.slope, mass: v.kind === 'otobus' ? 4 : 2, type: 'taksi', braking: speed < v.v - 0.05 }); return out;
+  }
+  course.place(sc + 2.2, 0, A); course.place(sc - 2.2, 0, B); course.place(sc, 0, P); { const x = A.x - B.x, z = A.z - B.z, l = Math.hypot(x, z) || 1; P.dx = x / l; P.dz = z / l; P.yaw = Math.atan2(P.dx, P.dz); } // (round a corner the lane swings gently)
   const bz = course.bus ? course.bus[P.i] + (course.bus[(P.i + 1) % course.n] - course.bus[P.i]) * P.t : 0, tz = course.tram ? course.tram[P.i] + (course.tram[(P.i + 1) % course.n] - course.tram[P.i]) * P.t : 0, lane = P.hw * v.lane, lat = v.dir * ((lane + (Math.max(lane, 0.88) - lane) * tz) * (1 - bz) + (1.3 + (v.lane - 0.3) * 2.2) * bz); // (they keep to the right)
   out.x = P.x - P.dz * lat; out.z = P.z + P.dx * lat; out.y = P.y; out.yaw = v.dir > 0 ? P.yaw : P.yaw + Math.PI; out.vx = P.dx * speed * v.dir; out.vz = P.dz * speed * v.dir; out.slope = P.slope * v.dir; out.mass = v.kind === 'otobus' ? 4 : 2; out.type = 'taksi'; out.braking = speed < v.v - 0.05; return out;
 }

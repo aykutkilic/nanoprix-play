@@ -143,7 +143,7 @@ export function buildRoads(W) {
       const pos = [], road = [], hub = [], idx = [], K = makeKerb();
       for (let i = i0; i <= i1; i++) {
         const [x, z, y, dx, dz] = F[i], dh = A ? Math.min(Math.hypot(x - A.x, z - A.z) - (A.r || 3), Math.hypot(x - B.x, z - B.z) - (B.r || 3)) : Math.min(r.s[i] - 1.6, r.len - r.s[i]);
-        for (const u of LAT) { const px = x - dz * u * r.hw, pz = z + dx * u * r.hw; pos.push(px, hAt(px, pz, y) + up, pz); road.push(u * r.hw, r.s[i], r.hw, (S && S[i] && r.spur) || C[i] ? -1 : RANK[r.style] + (r.bus ? 1 : 0)); hub.push(dh); }
+        for (const u of LAT) { const px = x - dz * u * r.hw, pz = z + dx * u * r.hw; pos.push(px, hAt(px, pz, y) + up, pz); road.push(u * r.hw, r.s[i], r.hw, (S && S[i] && r.spur) || C[i] ? -1 : r.one ? 0.3 : RANK[r.style] + (r.bus ? 1 : 0)); hub.push(dh); } // (a one-way road: a lane each side of a dashed line, nothing yellow)
         if (i < i1) { const q = (i - i0) * 4; for (let k = 0; k < 3; k++) idx.push(q + k, q + k + 1, q + k + 4, q + k + 1, q + k + 5, q + k + 4); }
       }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aRoad', new THREE.Float32BufferAttribute(road, 4)); g.setAttribute('aHub', new THREE.Float32BufferAttribute(hub, 1)); g.setIndex(idx); normals(g);

@@ -33,7 +33,7 @@ export class Cruiser {
       return [1, -1].filter((d) => (d > 0 ? q.len - j.s : j.s) > 2).map((d) => ({ r: q, dir: d, a: wrapA(In - (d > 0 ? Y : Y + Math.PI)), s0: j.s }));
     }
     const hub = dir > 0 ? r.b : r.a, k = dir > 0 ? r.n - 1 : 0, j = dir > 0 ? Math.max(0, r.n - 6) : Math.min(r.n - 1, 5), ix = r.p[k * 3] - r.p[j * 3], iz = r.p[k * 3 + 1] - r.p[j * 3 + 1], In = Math.atan2(ix, iz);
-    return this.net.adj.get(hub).filter((e) => e.r !== r).map((e) => { const d = e.r.a === hub ? 1 : -1, p = d > 0 ? 0 : e.r.n - 1, q = d > 0 ? Math.min(e.r.n - 1, 9) : Math.max(0, e.r.n - 10); return { r: e.r, dir: d, a: wrapA(In - Math.atan2(e.r.p[q * 3] - e.r.p[p * 3], e.r.p[q * 3 + 1] - e.r.p[p * 3 + 1])) }; });
+    return this.net.adj.get(hub).filter((e) => e.r !== r && e.go).map((e) => { const d = e.r.a === hub ? 1 : -1, p = d > 0 ? 0 : e.r.n - 1, q = d > 0 ? Math.min(e.r.n - 1, 9) : Math.max(0, e.r.n - 10); return { r: e.r, dir: d, a: wrapA(In - Math.atan2(e.r.p[q * 3] - e.r.p[p * 3], e.r.p[q * 3 + 1] - e.r.p[p * 3 + 1])) }; });
   }
   pick(r, dir, want) {
     const ex = this.exits(r, dir); if (!ex.length) return { r, dir: -dir, a: Math.PI, uturn: true };
@@ -59,10 +59,10 @@ export class Cruiser {
   drive(car, others, dt, time = null, grip = 1) {
     const o = this.out, q = this.locate(car); o.drift = o.turbo = false;
     if (!q) { o.steer = 0; o.gas = 0.3; o.brake = 0; return o; }
-    if (q.r !== this.road) { if (this.next && q.r === this.next.r && this.road === this.next.from) { this.dir = this.next.dir; this.want = 0; this.held = q.r.spur ? q.r : null; } else this.dir = q.c >= 0 ? 1 : -1; this.road = q.r; this.next = null; }
+    if (q.r !== this.road) { if (this.next && q.r === this.next.r && this.road === this.next.from) { this.dir = this.next.dir; this.want = 0; this.held = q.r.spur ? q.r : null; } else this.dir = q.r.one || q.c >= 0 ? 1 : -1; this.road = q.r; this.next = null; }
     if (this.heading && !this.held) { const d = this.heading(this.road); if (d && d !== this.dir) { this.dir = d; this.next = null; } } // (being guided, it turns about where it must)
     const r = this.road, v = Math.max(0, car.speed), s = r.s[q.i] + (r.s[q.i + 1] - r.s[q.i]) * q.t; this.sNow = s; if (this.held && (r !== this.held || s > 5 || s > r.len * 0.6)) this.held = null; if (this.next && this.next.at !== undefined && (this.next.at - s) * this.dir < -1.6) { this.next = null; this.want = 0; } const end = () => (this.next && this.next.from === this.road && this.next.at !== undefined ? this.next.at : this.dir > 0 ? r.len : 0); this.left = (end() - s) * this.dir;
-    if (this.left < 1.2 && this.choose(r, this.dir).uturn) { this.dir = -this.dir; this.next = null; }
+    if (this.left < 1.2 && this.choose(r, this.dir).uturn && !r.one) { this.dir = -this.dir; this.next = null; } // (not on a one-way road)
     const nx = this.choose(r, this.dir); this.left = Math.max(0, (end() - s) * this.dir); this.turn = nx;
     const p = this.ahead(r, this.dir, s, 1.1 + v * 0.3); let a = wrapA(Math.atan2(p.x - car.x, p.z - car.z) - car.yaw); o.steer = Math.max(-1, Math.min(1, -a * 2.4));
     // how fast: as set, less for what is coming

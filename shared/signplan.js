@@ -37,13 +37,14 @@ export function planSigns(net, marks = [], ports = []) {
   // past a hub of two roads there is nothing to choose: the sign names what comes after
   const far = (r, to) => { let h = to, road = r; for (let k = 0; k < 3; k++) { const e = net.adj.get(h); if (e.length !== 2) break; const n = e.find((c) => c.r !== road); if (!n) break; if (PLACE[h] && k === 0 && road.len > 60) break; road = n.r; h = n.to; } return h; };
   for (const r of net.main) for (const dir of [1, -1]) {
-    const hub = dir > 0 ? r.b : r.a, H = net.hubs.get(hub), exits = net.adj.get(hub).filter((e) => e.r !== r), end = dir > 0 ? r.len : 0, at = (back) => end - dir * back;
+    if (r.one && dir < 0) continue; // (a one-way road is driven from a to b only)
+    const hub = dir > 0 ? r.b : r.a, H = net.hubs.get(hub), exits = net.adj.get(hub).filter((e) => e.r !== r && e.go), end = dir > 0 ? r.len : 0, at = (back) => end - dir * back;
     if (exits.length >= 2) {
       const In = frame(r, at(Math.min(5, r.len / 2)), dir), rows = [];
       for (const e of exits) {
         const d = e.r.a === hub ? 1 : -1, o = frame(e.r, d > 0 ? Math.min(9, e.r.len / 2) : e.r.len - Math.min(9, e.r.len / 2), d), vx = o.x - H.x, vz = o.z - H.z, a = wrapA(Math.atan2(In.dx, In.dz) - Math.atan2(vx, vz)); // (right is +)
         if (Math.abs(a) > 2.55) continue;
-        const name = e.r.id === 'yss' ? 'Yavuz Sultan Selim Köprüsü' : e.r.id === 'bogaz' ? 'Boğaziçi Köprüsü' : e.r.id === 'tup' ? 'Avrasya Tüneli' : e.r.id === 'camt' ? 'Çamlıca Tüneli' : e.r.id === 'fsm' ? 'FSM Köprüsü' : e.r.id === 'galata' ? 'Galata Köprüsü' : e.r.id === 'unk2' ? 'Atatürk Köprüsü' : e.r.id === 'd3' ? 'Haliç Köprüsü' : PLACE[far(e.r, e.to)] || e.r.name;
+        const name = e.r.id === 'yss' ? 'Yavuz Sultan Selim Köprüsü' : e.r.id === 'bogaz' ? 'Boğaziçi Köprüsü' : e.r.id === 'tup' || e.r.id === 'tupw' ? 'Avrasya Tüneli' : e.r.id === 'camt' ? 'Çamlıca Tüneli' : e.r.id === 'fsm' ? 'FSM Köprüsü' : e.r.id === 'galata' ? 'Galata Köprüsü' : e.r.id === 'unk2' ? 'Atatürk Köprüsü' : e.r.id === 'd3' ? 'Haliç Köprüsü' : PLACE[far(e.r, e.to)] || e.r.name;
         const t = st && st.data.turns[`${r.id}>${e.r.id}@${hub}`]; // what the sign there really reads, where OSM has it
         rows.push({ real: !!t, items: t ? t.rows.slice(0, 3) : [{ name }], ref: t && t.ref.length ? t.ref : shield(e.r.id) ? [shield(e.r.id)] : [], a, arrow: Math.abs(a) < 0.5 ? 'up' : a > 0 ? (a > 1.15 ? 'right' : 'upright') : a < -1.15 ? 'left' : 'upleft', name, via: e.r.name, no: shield(e.r.id) });
       }
@@ -59,14 +60,14 @@ export function planSigns(net, marks = [], ports = []) {
     let best = null;
     for (const r of net.main) for (let i = 4; i < r.n - 4; i += 2) { const ex = r.p[i * 3] - m.x, ez = r.p[i * 3 + 1] - m.z, d = ex * ex + ez * ez; if (!best || d < best.d) best = { d, r, s: r.s[i] }; } if (best) best.d = Math.sqrt(best.d);
     if (!best || best.d - m.r > (m.top > 30 ? 130 : 72)) continue;
-    for (const dir of [1, -1]) for (const back of [7, 10, 4, 14, 18, 1, -3, 24]) {
+    for (const dir of best.r.one ? [1] : [1, -1]) for (const back of [7, 10, 4, 14, 18, 1, -3, 24]) {
       const s = best.s - dir * back; if (s < 2 || s > best.r.len - 2) continue;
       const f = frame(best.r, s, dir), side = -f.dz * (m.x - f.x) + f.dx * (m.z - f.z);
       if (put('brown', best.r, s, dir, { text: m.name, right: side > 0 })) break;
     }
   }
-  for (const r of net.main) for (const dir of [1, -1]) {
-    const hub = dir > 0 ? r.b : r.a, end = dir > 0 ? r.len : 0, exits = net.adj.get(hub).filter((e) => e.r !== r), at = (back) => end - dir * back;
+  for (const r of net.main) for (const dir of r.one ? [1] : [1, -1]) {
+    const hub = dir > 0 ? r.b : r.a, end = dir > 0 ? r.len : 0, exits = net.adj.get(hub).filter((e) => e.r !== r && e.go), at = (back) => end - dir * back;
     // the road's own name, and its limit, as one turns into it
     const start = dir > 0 ? 0 : r.len, go = (n) => start + dir * n, A = net.hubs.get(dir > 0 ? r.a : r.b), deg = net.adj.get(dir > 0 ? r.a : r.b).length;
     if (deg >= 3 && r.len > 18) put('plate', r, go((A.r || 3) + 2.5), dir, { text: r.name, green: r.style === 'motorway', no: shield(r.id) });

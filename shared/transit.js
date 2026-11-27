@@ -11,7 +11,7 @@ export const KIND = {
 export const BUS = { r: 0.34 };
 // a shuttle's way: two apart for `loop` either side of its middle, coming together over `ease` beyond that; in its halls
 // the platforms from E to X either side of its one way, PY over it, L either side of where a car stands (client/transit.js, trip.js)
-export const SHUTTLE = { loop: 4.5, ease: 6, E: 0.33, X: 1.25, PY: 0.2, L: 2.3, lid: 4, W: 0.42, H: 0.95 }; // (lid: how many of its points under ground its mouth is roofed over, the ground being thin there; W, H: its tube, half as wide where it is one way, and how high: tools/lines.mjs lays it at least that far under)
+export const SHUTTLE = { loop: 4.5, ease: 6, E: 0.33, X: 1.25, PY: 0.2, L: 2.3, lid: 4, W: 0.42, H: 0.95, R: 0.054, G2: 0.85 }; // (lid: how many of its points under ground its mouth is roofed over, the ground being thin there; W, H: its tube, half as wide where it is one way, and how high: tools/lines.mjs lays it at least that far under; R, G2: how high each step of its platforms is, and how steep the flight down from the door of its top hall, which goes down within it)
 const ease = (t) => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); }, unpack = (list) => { let l = 0; return Float64Array.from(list, (d) => (l += d)); };
 // a way something goes along: points with their distance
 class Way {
@@ -41,6 +41,9 @@ export class Line extends Way {
   // how far apart its two ways are there, of K.lat: a shuttle's one way parts in the middle and joins again
   loop(v) { const m = this.len / 2; return 1 - ease((Math.abs(v - m) - SHUTTLE.loop) / SHUTTLE.ease); }
   // the line itself at a distance: [x, y, z, dx, dz, i]
+  // a shuttle's platforms: as high as its way (a car's floor), but in its top hall, which goes down within it (tools/lines.mjs), a landing
+  // at the street within its door, a flight down from it, and in steps of R all of it (client/transit.js sets this.land: { s, y })
+  plat(v) { const { PY, R, G2 } = SHUTTLE, y = this.frame(v)[1] + PY, L = this.land; if (!L) return y; const p = Math.min(L.y, Math.max(y, L.y - G2 * Math.max(0, v - L.s))); return L.y - R * Math.round((L.y - p) / R); }
   frame(v) { const { s, p, n } = this; v = Math.min(this.len, Math.max(0, v)); let lo = 0, hi = n - 1; while (hi - lo > 1) { const q = (lo + hi) >> 1; if (s[q] <= v) lo = q; else hi = q; } const t = (v - s[lo]) / Math.max(1e-6, s[lo + 1] - s[lo]), a = Math.max(0, lo - 1) * 3, b = Math.min(n - 1, lo + 2) * 3, dx = p[b] - p[a], dz = p[b + 1] - p[a + 1], l = Math.hypot(dx, dz) || 1, k = lo * 3; return [p[k] + (p[k + 3] - p[k]) * t, p[k + 2] + (p[k + 5] - p[k + 2]) * t, p[k + 1] + (p[k + 4] - p[k + 1]) * t, dx / l, dz / l, lo]; }
 }
 // one way of a bus line: its own line on the road

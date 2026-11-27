@@ -86,7 +86,7 @@ export function buildRoads(W) {
     let c = !!net.transit && net.transit.mouth(x, z); if (c) return true;
     net.around(x, z, (r, i, t, d, h) => { if (r !== self && d < r.hw - 0.06 && Math.abs(h - y) < 0.55) c = true; });
     if (c) return true;
-    for (const d of net.discsAt(x, z)) if (Math.abs(d.x - x) < d.r && Math.abs(d.z - z) < d.r && Math.hypot(d.x - x, d.z - z) < d.r - 0.02 && Math.abs(d.h - y) < 1) return true;
+    for (const d of net.discsAt(x, z)) if (Math.abs(d.x - x) < d.r && Math.abs(d.z - z) < d.r && Math.hypot(d.x - x, d.z - z) < net.discR(d, Math.atan2(x - d.x, z - d.z)) - 0.02 && Math.abs(d.h - y) < 1) return true; // (to the junction's edge as drawn: its own kerb takes over there)
     return false;
   };
   const lamps = [], piers = [];
@@ -120,6 +120,12 @@ export function buildRoads(W) {
     let pa = profile(a.p, a.nx, a.nz, a.y + up, r, e, bridge, tight);
     for (let k = 1; k <= n; k++) { const pb = k === n ? profile(b.p, b.nx, b.nz, b.y + up, r, e, bridge, tight) : mid(k / n); for (let q = 0; q + 1 < pa.length; q++) strip(K, [pa[q], pa[q + 1]], [pb[q], pb[q + 1]], C[Math.min(q, C.length - 1)]); pa = pb; }
   };
+  // where a kerb stops (at a junction's, at a way in), it runs to the very point where the other begins, and is closed there
+  const tri = (K, a, b, c, col) => { const n = K.pos.length / 3; K.pos.push(...a, ...b, ...c); for (let k = 0; k < 3; k++) K.col.push(...col); K.idx.push(n, n + 1, n + 2); };
+  const cap = (K, e, r, side, bridge, tight, up) => { const P = profile(e.p, e.nx, e.nz, e.y + up, r, side, bridge, tight); for (let q = 1; q + 1 < P.length; q++) tri(K, P[0], P[q], P[q + 1], CONC); };
+  const between = (a, b, t) => { const nx = a.nx + (b.nx - a.nx) * t, nz = a.nz + (b.nz - a.nz) * t, l = Math.hypot(nx, nz) || 1; return { p: [a.p[0] + (b.p[0] - a.p[0]) * t, a.p[1] + (b.p[1] - a.p[1]) * t], y: a.y + (b.y - a.y) * t, nx: nx / l, nz: nz / l, free: true, bridge: a.bridge && b.bridge, tight: a.tight || b.tight }; };
+  const edgeOf = (ok) => { let lo = 0, hi = 1; for (let n = 0; n < 12; n++) { const m = (lo + hi) / 2; if (ok(m)) lo = m; else hi = m; } return lo; }; // (ok(0) true: how far it holds)
+  const halfway = (K, a, b, ok, r, side, up, C) => { const [f, t] = a.free ? [a, edgeOf(ok)] : [b, edgeOf((u) => ok(1 - u))], m = between(a, b, a.free ? t : 1 - t); if (t < 0.02) return; m.bridge = f.bridge; m.tight = f.tight; if (a.free) sweep(K, a, m, r, side, f.bridge, f.tight, up, C); else sweep(K, m, b, r, side, f.bridge, f.tight, up, C); cap(K, m, r, side, f.bridge, f.tight, up); };
   const COLS = (r) => [r.style === 'motorway' ? RAIL : r.style === 'shore' ? SHORE : CONC, r.style === 'motorway' ? RAIL : CONC, CONC, PAVE, SIDE, SIDE];
   const batch = new Batch(), finish = (K) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(K.pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(K.col, 3)); g.setIndex(K.idx); normals(g); batch.add(pack(g), kerb, 1.35); };
   W.kerbStone = kerb; kerb.side = THREE.DoubleSide; weathered(kerb, { snow: 0.9, wet: 0.35, shine: 0.4 });
@@ -143,7 +149,8 @@ export function buildRoads(W) {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aRoad', new THREE.Float32BufferAttribute(road, 4)); g.setAttribute('aHub', new THREE.Float32BufferAttribute(hub, 1)); g.setIndex(idx); normals(g);
       if (g.attributes.normal.getY(0) < 0) { for (let k = 0; k < idx.length; k += 3) { const t = idx[k]; idx[k] = idx[k + 1]; idx[k + 1] = t; } g.setIndex(idx); normals(g); }
       batch.add(pack(g), tube ? inside : asphalt, 1.6);
-      edges.forEach((E, e) => { for (let i = i0; i < i1; i++) { const a = E[i], b = E[i + 1]; if (!a.free || !b.free) continue; sweep(K, a, b, r, e, a.bridge && b.bridge, a.tight || b.tight, up, COLS(r)); } });
+      const own = (i) => !(S && S[i]) && !(r.tunnel && (r.tunnel[i] || 0) === 2); // (not left out for its own sake: covered by what is beside it)
+      edges.forEach((E, e) => { for (let i = i0; i < i1; i++) { const a = E[i], b = E[i + 1]; if (a.free !== b.free && own(i) && own(i + 1)) { halfway(K, a, b, (t) => { const m = between(a, b, t); return !covered(m.p[0], m.p[1], m.y, r); }, r, e, up, COLS(r)); continue; } if (!a.free || !b.free) continue; sweep(K, a, b, r, e, a.bridge && b.bridge, a.tight || b.tight, up, COLS(r)); } });
       if (K.idx.length) finish(K);
     }
     // lamps, by turns on either side (the light pools of the asphalt's shader)
@@ -160,8 +167,9 @@ export function buildRoads(W) {
     batch.add(pack(g), asphalt, 1.6, false);
 
     const K = makeKerb(), fake = { style: 'avenue', hw: 2 };
-    const E = Array.from({ length: 49 }, (_, k) => { const t = (k / 48) * Math.PI * 2, nx = Math.sin(t), nz = Math.cos(t), Rt = net.discR(d, t), x = d.x + nx * Rt, z = d.z + nz * Rt; let on = soft && setts(x, z); net.around(x, z, (r, i, tt, D, h) => { if (D < r.hw - 0.02 && Math.abs(h - d.h) < 0.9) on = true; }); if (net.transit && net.transit.mouth(x, z)) on = true; return { p: [x, z], nx, nz, y: y0(x, z), free: !on, tight: !on && crowded(x, z, nx, nz, y0(x, z), null, [0.35, 0.6]) }; });
-    for (let k = 0; k < 48; k++) { const a = E[k], b = E[k + 1]; if (!a.free || !b.free) continue; sweep(K, a, b, fake, 0, false, a.tight || b.tight, 0, COLS(fake)); }
+    const ring = (t) => { const nx = Math.sin(t), nz = Math.cos(t), Rt = net.discR(d, t), x = d.x + nx * Rt, z = d.z + nz * Rt; let on = soft && setts(x, z); net.around(x, z, (r, i, tt, D, h) => { if (D < r.hw - 0.02 && Math.abs(h - d.h) < 0.9) on = true; }); if (net.transit && net.transit.mouth(x, z)) on = true; return { p: [x, z], nx, nz, y: y0(x, z), free: !on, tight: !on && crowded(x, z, nx, nz, y0(x, z), null, [0.35, 0.6]) }; };
+    const E = Array.from({ length: 49 }, (_, k) => ring((k / 48) * Math.PI * 2));
+    for (let k = 0; k < 48; k++) { const a = E[k], b = E[k + 1]; if (a.free !== b.free) { const t0 = (k / 48) * Math.PI * 2, t1 = ((k + 1) / 48) * Math.PI * 2, f = a.free ? a : b, t = edgeOf((u) => ring(a.free ? t0 + (t1 - t0) * u : t1 - (t1 - t0) * u).free), m = ring(a.free ? t0 + (t1 - t0) * t : t1 - (t1 - t0) * t); if (t < 0.02) continue; m.tight = f.tight; if (a.free) sweep(K, a, m, fake, 0, false, f.tight, 0, COLS(fake)); else sweep(K, m, b, fake, 0, false, f.tight, 0, COLS(fake)); cap(K, m, fake, 0, false, f.tight, 0); continue; } if (!a.free || !b.free) continue; sweep(K, a, b, fake, 0, false, a.tight || b.tight, 0, COLS(fake)); } // (to where a road's own kerb begins, and closed there)
     if (K.idx.length) finish(K);
     { const e = { d, f: Uint8Array.from(E, (q) => (q.free ? (q.tight ? 5 : 1) : 0)), y: Float32Array.from(E, (q) => q.y) }, R = d.r + 0.8; for (let a = Math.floor((d.x - R) / 8); a <= Math.floor((d.x + R) / 8); a++) for (let b = Math.floor((d.z - R) / 8); b <= Math.floor((d.z + R) / 8); b++) { const k = a * 8192 + b; if (!rounds.has(k)) rounds.set(k, []); rounds.get(k).push(e); } }
   }

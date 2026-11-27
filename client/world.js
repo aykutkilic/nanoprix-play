@@ -37,7 +37,7 @@ export const CHUNK = 64; // grid cells across a piece of ground
 export async function buildWorld(scene, A, net, onStage = () => {}) {
   const root = new THREE.Group(), still = new Still(), under = new THREE.Group(); scene.add(root); root.add(still); scene.add(under); under.userData.below = true; // (under: what is seen from a hall below – the trains, the ways down; view.js draws nothing else there)
   const g = A.map.grid, M0 = A.map.map, { height, coast } = A.ground;
-  const night = { value: 0 }, time = { value: 0 }, W = { under, time, keeper: new Keeper(), still, mouths: { value: net.roads.filter((r) => r.tunnel).flatMap(() => [0, 1]).map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, shut: { value: [0, 1].map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, halls: { value: [0, 1, 2, 3, 4, 5].map((k) => (k % 3 === 1 ? new THREE.Vector4(0, 0, 0, 0) : new THREE.Vector4(1e6, 1e6, 0, 1))) }, root, night, time, height, coast, net, grid: g, walkOn: [], glow: [], spots: [], updates: [], A };
+  const night = { value: 0 }, time = { value: 0 }, W = { under, time, keeper: new Keeper(), still, mouths: { value: net.roads.filter((r) => r.tunnel).flatMap(() => [0, 1]).map(() => new THREE.Vector4(1e6, 1e6, 0, 1)) }, shut: { value: [0, 1, 2, 3].map((k) => (k < 2 ? new THREE.Vector4(1e6, 1e6, 0, 1) : new THREE.Vector4(-1e6, 0, 0, 0))) }, halls: { value: [0, 1, 2, 3, 4, 5].map((k) => (k % 3 === 1 ? new THREE.Vector4(0, 0, 0, 0) : new THREE.Vector4(1e6, 1e6, 0, 1))) }, root, night, time, height, coast, net, grid: g, walkOn: [], glow: [], spots: [], updates: [], A };
   W.transit = net.transit = new Transit({ ...A.transit, islands: A.roads.islands }, A.lines);
   W.lit = (m, color, k) => { m.emissive = new THREE.Color(color); m.emissiveIntensity = 0; W.glow.push([m, k]); return m; };
   W.mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, ...o });
@@ -49,17 +49,17 @@ export async function buildWorld(scene, A, net, onStage = () => {}) {
   W.shoreTex = shoreTex; W.area = area;
 
   // ------------------------------------------------------------ terrain, in pieces, finer near the camera
-  const ground = new THREE.MeshStandardMaterial({ roughness: 0.96 }); 
+  const ground = (W.groundMat = new THREE.MeshStandardMaterial({ roughness: 0.96 })); // (also Tünel's mounds over its lids: client/transit.js)
   const urbanTex = tex(A.urban);
   W.cut = { tex: { value: new THREE.DataTexture(new Uint8Array(1), 1, 1, THREE.RedFormat) }, box: { value: new THREE.Vector4(0, 0, 1e-6, 1e-6) } }; W.cut.tex.value.needsUpdate = true; // (where something lies on the ground of its own: client/topkapi.js)
   ground.onBeforeCompile = (s) => {
     Object.assign(s.uniforms, { uCut: W.cut.tex, uCutBox: W.cut.box, uNight: night, uNoise: { value: noiseTexture() }, uShore: { value: shoreTex }, uPark: { value: parkTex }, uUrban: { value: urbanTex }, uArea: { value: area }, uMouth: W.mouths, uShut: W.shut, uHall: W.halls });
     s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vW; varying float vUpN;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvW = position; vUpN = normal.y;');
-    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uMouth[' + W.mouths.value.length + ']; uniform vec4 uShut[2]; uniform vec4 uHall[6];\nuniform sampler2D uCut; uniform vec4 uCutBox;\nuniform sampler2D uNoise, uShore, uPark, uUrban; uniform vec4 uArea; uniform float uNight; varying vec3 vW; varying float vUpN; float gBump; float gUrban;')
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec4 uMouth[' + W.mouths.value.length + ']; uniform vec4 uShut[4]; uniform vec4 uHall[6];\nuniform sampler2D uCut; uniform vec4 uCutBox;\nuniform sampler2D uNoise, uShore, uPark, uUrban; uniform vec4 uArea; uniform float uNight; varying vec3 vW; varying float vUpN; float gBump; float gUrban;')
       .replace('#include <map_fragment>', `
         { vec2 cu = (vW.xz - uCutBox.xy) / uCutBox.zw; if (cu.x > 0.0 && cu.y > 0.0 && cu.x < 1.0 && cu.y < 1.0 && texture2D(uCut, cu).r > 0.5) discard; }
         for (int k = 0; k < ${W.mouths.value.length}; k++) { vec2 md = vW.xz - uMouth[k].xy; float al = dot(md, uMouth[k].zw), la = abs(dot(md, vec2(-uMouth[k].w, uMouth[k].z))); if (al > -1.2 && al < 13.0 && la < 2.5) discard; } // (the mouths of the tunnel)
-        for (int k = 0; k < 2; k++) { vec2 md = vW.xz - uShut[k].xy; float al = dot(md, uShut[k].zw), la = abs(dot(md, vec2(-uShut[k].w, uShut[k].z))); if (al > -0.05 && al < ${(SHUTTLE.lid - 0.2).toFixed(2)} && la < ${(SHUTTLE.W + 0.15).toFixed(2)}) discard; } // (Tünel's mouths, under their lids, the ground thin there: client/transit.js)
+        for (int k = 0; k < 2; k++) { vec2 md = vW.xz - uShut[k].xy; float al = dot(md, uShut[k].zw), la = abs(dot(md, vec2(-uShut[k].w, uShut[k].z))); if (al > -0.05 && al < ${(SHUTTLE.lid - 0.2).toFixed(2)} && la < ${(SHUTTLE.W + 0.15).toFixed(2)} && vW.y < uShut[k + 2].x + uShut[k + 2].y * al + ${(SHUTTLE.H + 0.25).toFixed(2)}) discard; } // (Tünel's mouths, under their lids, where the ground is thin: below their tops, client/transit.js; over them it covers them)
         for (int k = 0; k < 2; k++) { vec4 P = uHall[k * 3], B = uHall[k * 3 + 1], Y = uHall[k * 3 + 2]; vec2 md = vW.xz - P.xy; float al = dot(md, P.zw), u = dot(md, vec2(-P.w, P.z)); if (al > B.x && al < B.y && u > B.z && u < B.w && vW.y > Y.x + Y.y * al - 0.06) discard; } // (within its halls, above their floors)
         vec2 auv = (vW.xz - uArea.xy) / uArea.zw;
         vec2 tp = vW.xz + vW.y * vec2(1.3, 0.8);

@@ -31,8 +31,9 @@ export class Fly {
   }
   frame(dt) {
     const q = this.eye, W = this.game.view.world, K = this.game.input.keys, h = (c) => (K.has(c) ? 1 : 0), b = W.bounds;
-    const f = h('KeyW') - h('KeyS'), s = h('KeyD') - h('KeyA'), u = h('KeyR') - h('KeyF'), sx = Math.sin(q.yaw), sz = Math.cos(q.yaw), cp = Math.cos(q.pitch);
-    let x = sx * cp * f - sz * s, y = Math.sin(q.pitch) * f + u, z = sz * cp * f + sx * s; const l = Math.hypot(x, y, z), v = l > 1e-6 ? (SPEED * (K.has('ShiftLeft') || K.has('ShiftRight') ? FAST : 1)) / l : 0, a = 1 - Math.exp(-dt * 10);
+    const f = h('KeyW') - h('KeyS'), s = h('KeyD') - h('KeyA'), u = h('KeyR') - h('KeyF'), sx = Math.sin(q.yaw), sz = Math.cos(q.yaw);
+    // (W, A, S, D keep the height, wherever one looks: only R and F climb and sink)
+    let x = sx * f - sz * s, y = u, z = sz * f + sx * s; const l = Math.hypot(x, y, z), v = l > 1e-6 ? (SPEED * (K.has('ShiftLeft') || K.has('ShiftRight') ? FAST : 1)) / l : 0, a = 1 - Math.exp(-dt * 10);
     q.vx += (x * v - q.vx) * a; q.vy += (y * v - q.vy) * a; q.vz += (z * v - q.vz) * a;
     x = q.x + q.vx * dt; z = q.z + q.vz * dt; if (b) { x = Math.max(b.x0 - BEYOND, Math.min(b.x1 + BEYOND, x)); z = Math.max(b.z0 - BEYOND, Math.min(b.z1 + BEYOND, z)); }
     q.x = x; q.z = z; q.y = Math.min(TOP, Math.max(q.y + q.vy * dt, Math.max(0, W.height(x, z)) + 0.5)); q.speed = Math.hypot(q.vx, q.vy, q.vz); return q;

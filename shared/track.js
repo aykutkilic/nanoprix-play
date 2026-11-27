@@ -3,6 +3,8 @@
 // own level – the union of them – so junctions need no special case, and a
 // bridge and the road under it are told apart by height.
 
+import { buildCorners, buildMouths, cornerIn } from './corners.js';
+
 const NO_DISCS = Object.freeze([]);
 
 export class Network {
@@ -36,14 +38,19 @@ export class Network {
     for (const d of this.discs) { if (!d.hub) continue; const E = []; for (const r of [...this.main, ...this.spurs]) { const n = r.n, P = r.p; for (const e of [0, n - 1]) { if (Math.hypot(P[e * 3] - d.x, P[e * 3 + 1] - d.z) > d.r + 0.8 || Math.abs(P[e * 3 + 2] - d.h) > 1.2) continue; const s = e ? -1 : 1; let i = e; while (i + s >= 0 && i + s < n && Math.hypot(P[i * 3] - d.x, P[i * 3 + 1] - d.z) < d.r) i += s; const j = Math.max(0, Math.min(n - 1, i - s)), dx = P[i * 3] - P[j * 3], dz = P[i * 3 + 1] - P[j * 3 + 1], l = Math.hypot(dx, dz) || 1, w = r.hw + 0.05; E.push([P[i * 3] - (dz / l) * w, P[i * 3 + 1] + (dx / l) * w], [P[i * 3] + (dz / l) * w, P[i * 3 + 1] - (dx / l) * w]); } }
       if (E.length < 4) continue; const S = [...E].sort((a, b) => a[0] - b[0] || a[1] - b[1]), cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = []; for (const p of S) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); } for (const p of S.reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); } const H = [...lo.slice(0, -1), ...up.slice(0, -1)];
       if (H.length < 3) continue; let inside = true; for (let k = 0; k < H.length; k++) { const a = H[k], b = H[(k + 1) % H.length]; if (cr(a, b, [d.x, d.z]) <= 0.1) inside = false; } if (inside) { const span = (a, b) => { let t = Math.atan2(b[0] - d.x, b[1] - d.z) - Math.atan2(a[0] - d.x, a[1] - d.z); t = Math.abs(Math.atan2(Math.sin(t), Math.cos(t))); return t; }; const cut = []; for (let k = 0; k < H.length; k++) { const a = H[k], b = H[(k + 1) % H.length]; if (span(a, b) <= 2.0) continue; let used = false; for (let t = 0.15; t < 0.9 && !used; t += 0.15) { const mx = a[0] + (b[0] - a[0]) * t, mz = a[1] + (b[1] - a[1]) * t, ox = mx - d.x, oz = mz - d.z, ol = Math.hypot(ox, oz) || 1; for (let f = 0.45; f <= 1.05 && !used; f += 0.15) { const px = mx + (ox / ol) * (d.r - ol) * f, pz = mz + (oz / ol) * (d.r - ol) * f; this.around(px, pz, (r, i, tt, D, h) => { if (D < r.hw - 0.1 && Math.abs(h - d.h) < 1.5) used = true; }); } } if (!used) cut.push([a, b]); } if (cut.length) d.poly = cut; } } /* (and not where a road comes in there after all) */ // (only across the side where no road goes: between roads it stays round, for who cuts the corner)
+    // the corners where roads meet, rounded, and the mouths of the roads' ends (shared/corners.js)
+    { const t0 = Date.now(), { corners, cells } = buildCorners(this); this.corners = corners; this.ccells = cells; buildMouths(this); this.cornerMs = Date.now() - t0; }
   }
+  cornersAt(x, z) { return this.ccells.get(Math.floor(x / 4) * 8192 + Math.floor(z / 4)) || NO_DISCS; }
+  // how far inside the corners' road (x, z) is about y: the greatest, and which; [-Infinity, null] off them
+  cornerIn(x, z, y) { let m = -Infinity, w = null; for (const c of this.cornersAt(x, z)) { if (Math.abs(c.h - y) > 0.8) continue; const I = cornerIn(c, x, z); if (I > m) { m = I; w = c; } } return [m, w]; }
   discsAt(x, z) {
     return this.dcells?.get(Math.floor(x / 4) * 8192 + Math.floor(z / 4)) || NO_DISCS;
   }
   // how far within a junction a place is (its hull's, or its circle's)
   discIn(d, x, z) { const D = d.r - Math.hypot(x - d.x, z - d.z); if (!d.poly) return D; let m = D; for (const [a, b] of d.poly) { const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; m = Math.min(m, ((b[0] - a[0]) * (z - a[1]) - (b[1] - a[1]) * (x - a[0])) / l); } return m; }
   // how far from a junction's middle its edge is, in direction t (sin t, cos t)
-  discR(d, t) { if (!d.poly) return d.r; const ux = Math.sin(t), uz = Math.cos(t); let best = d.r; for (const [a, b] of d.poly) { const ex = b[0] - a[0], ez = b[1] - a[1], den = ux * ez - uz * ex; if (Math.abs(den) < 1e-9) continue; const s = ((a[0] - d.x) * ez - (a[1] - d.z) * ex) / den, q = ((a[0] - d.x) * uz - (a[1] - d.z) * ux) / den; if (s > 0 && q >= -1e-6 && q <= 1 + 1e-6) best = Math.min(best, s); } return best; }
+  discR(d, t) { if (d.rd !== undefined && d.rd < d.r) return d.rd; if (!d.poly) return d.r; const ux = Math.sin(t), uz = Math.cos(t); let best = d.r; for (const [a, b] of d.poly) { const ex = b[0] - a[0], ez = b[1] - a[1], den = ux * ez - uz * ex; if (Math.abs(den) < 1e-9) continue; const s = ((a[0] - d.x) * ez - (a[1] - d.z) * ex) / den, q = ((a[0] - d.x) * uz - (a[1] - d.z) * ux) / den; if (s > 0 && q >= -1e-6 && q <= 1 + 1e-6) best = Math.min(best, s); } return best; }
 
   // where each side street leaves the road it comes off: by that road, [{ s, spur, side: +1 right of its direction, x, z }]
   sides() {
@@ -90,7 +97,8 @@ export class Network {
     out.inside = out.road.hw - out.d;
     if (sw > 0) out.h = sh / sw;
     const ds = this.discsAt(x, z);
-    for (const d of ds) { const I = d.r - Math.hypot(x - d.x, z - d.z); if (I > out.inside && Math.abs(d.h - y) < 1.2) { out.inside = I; out.disc = d; } } // (round for who drives: the cut shape, discR, is only how it is drawn)
+    for (const d of ds) { const I = d.rd !== undefined && d.rd < d.r ? d.rd - Math.hypot(x - d.x, z - d.z) : this.discIn(d, x, z); if (I > out.inside && Math.abs(d.h - y) < 1.2) { out.inside = I; out.disc = d; } } // (as it is drawn: the round, as wide as its narrowest road; the corners do the rest)
+    for (const c of this.cornersAt(x, z)) { if (Math.abs(c.h - y) > 1.2 || (only && !only.has(c.a.index) && !only.has(c.b.index))) continue; const I = cornerIn(c, x, z); if (I > out.inside) { out.inside = I; out.disc = c; } } // (a corner's road, round to its kerb, in a race too where one of its roads is on the course; pushed back, one goes towards where its edges cross)
     if (pd && pd[0] > out.inside) { const d = pd[1]; out.inside = pd[0]; out.h = d.h; out.disc = { x: d.cx ?? d.x, z: d.cz ?? d.z, h: d.h, r: 0, pad: d }; }
     return out;
   }

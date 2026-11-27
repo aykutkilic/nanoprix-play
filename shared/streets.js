@@ -15,6 +15,8 @@ export class Streets {
     this.byRoad = new Map(); for (const q of this.signals) { if (!this.byRoad.has(q.r.index)) this.byRoad.set(q.r.index, []); this.byRoad.get(q.r.index).push(q); }
     this.limits = net.roads.map((r) => { const e = data.roads[r.id] || (r.spur ? { fwd: [[0, 30]], back: [[r.len, 30]] } : { fwd: [[0, 50]], back: [[r.len, 50]] }); return { fwd: e.fwd, back: e.back }; });
   }
+  // how many lanes OSM gives at s on a road going its way (1) or against it (−1); 0 where it says nothing (tools/streets.mjs)
+  lanes(r, s, dir) { const e = this.data.roads[r.id]?.lanes, L = e && (dir > 0 ? e.fwd : e.back); if (!L) return 0; let v = 0; if (dir > 0) { for (const [q, x] of L) if (q <= s + 0.5) v = x; else break; return v || L[0][1]; } for (const [q, x] of L) if (q >= s - 0.5) v = x; return v || L[L.length - 1][1]; }
   // the limit (km/h) at s on a road, going its way (1) or against it (−1)
   limit(r, s, dir) { const e = this.limits[r.index]; if (!e) return 50; if (dir > 0) { let v = e.fwd[0][1]; for (const [q, x] of e.fwd) if (q <= s + 0.5) v = x; return v; } let v = e.back[0][1]; for (const [q, x] of e.back) if (q >= s - 0.5) v = x; return v; }
   // lights ahead on this road within `reach`: [signal, distance]

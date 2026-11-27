@@ -41,7 +41,7 @@ export class Trip {
     if (stage) return Math.max(W.height(x, z), 0.35); // (a landing stage)
     let square = W.paved ? W.paved(x, z) : null; for (const f of W.walkOn || []) { const h = f(x, z, y); if (h !== null && (square === null || Math.abs(h - y) < Math.abs(square - y))) square = h; } if (kerb === null && square !== null && Math.abs(square - y) < 0.7) return square; // (a square, a street one walks in; and what is built to walk on: galata.js)
     if (kerb !== null) { const g = W.height(x, z); return Math.abs(g - kerb) < 0.35 ? Math.max(g, kerb) : kerb; } // (the pavement)
-    if (q && q.inside > -1.35 && Math.abs(q.h - y) < 1.4 && W.coast(x, z) > 0.1) { const g = W.height(x, z); if (Math.abs(g - q.h) < 0.6) return g; } // (and the ground beside it, unless it falls away)
+    if (q && q.inside > -1.35 && Math.abs(q.h - y) < 1.4 && W.coast(x, z) > 0.1) { const g = W.bankAt?.(x, z) ?? W.height(x, z); if (Math.abs(g - q.h) < 0.6) return g; } // (and the ground beside it, unless it falls away: on a bank, as it is drawn)
     return path > -50 ? (W.coast(x, z) > 0.25 ? W.height(x, z) : path) : null;
   }
   // where one is now: on the street, in a passage, in a hall

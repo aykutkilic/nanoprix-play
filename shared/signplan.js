@@ -96,3 +96,10 @@ export function planSigns(net, marks = [], ports = []) {
   return out;
 }
 export { frame };
+// where who walks crosses a road: its zebras, OSM's and one at each pair of lights [{ r, s }] (client/signals.js paints them; client/roads.js lets its kerbs down there)
+export function zebras(net) {
+  const st = net.streets, out = []; if (!st) return out;
+  for (const c of st.data.crossings) { const r = net.byId.get(c.road); if (r && c.s > 3 && c.s < r.len - 3 && !(st.byRoad.get(r.index) || []).some((q) => Math.abs(q.s - c.s) < 3)) out.push({ r, s: c.s }); }
+  for (const q of st.signals) if (q.s >= 2.5 && q.s <= q.r.len - 2.5) out.push({ r: q.r, s: q.s });
+  return out;
+}

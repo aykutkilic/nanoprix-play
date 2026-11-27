@@ -9,6 +9,9 @@ export const KIND = {
   rail: { lat: 0.42, cars: 6, pitch: 2.72, dwell: 30 }, metro: { lat: 0.42, cars: 4, pitch: 2.72, dwell: 25 }, fun: { lat: 0.3, cars: 2, pitch: 1.5, dwell: 30 }, tram: { lat: 0.34, cars: 3, pitch: 1.72, dwell: 22 }, old: { lat: 0.3, cars: 1, pitch: 1.4, dwell: 22 }, mbus: { lat: -0.52, dwell: 13, len: 3.3 }, bus: { lat: 0, dwell: 18, len: 1.7 },
 };
 export const BUS = { r: 0.34 };
+// a shuttle's way: two apart for `loop` either side of its middle, coming together over `ease` beyond that; in its halls
+// the platforms from E to X either side of its one way, PY over it, L either side of where a car stands (client/transit.js, trip.js)
+export const SHUTTLE = { loop: 4.5, ease: 6, E: 0.33, X: 1.25, PY: 0.2, L: 2.3, lid: 4, W: 0.42, H: 0.95 }; // (lid: how many of its points under ground its mouth is roofed over, the ground being thin there; W, H: its tube, half as wide where it is one way, and how high: tools/lines.mjs lays it at least that far under)
 const ease = (t) => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); }, unpack = (list) => { let l = 0; return Float64Array.from(list, (d) => (l += d)); };
 // a way something goes along: points with their distance
 class Way {
@@ -28,12 +31,15 @@ export class Line extends Way {
     const s = (this.s = new Float32Array(n)); for (let i = 1; i < n; i++) s[i] = s[i - 1] + Math.hypot(p[i * 3] - p[i * 3 - 3], p[i * 3 + 1] - p[i * 3 - 2]); this.len = s[n - 1];
     if (this.kind === 'rail') { let e = 0; for (let i = 0; i < n; i++) { if (st[i] === 2) { e++; } else e = 0; let f = 0; if (st[i] === 2) { let j = i; while (j < n && st[j] === 2 && j - i < 60) { j++; f++; } p[i * 3 + 2] -= Math.min(5, Math.max(0, Math.min(e, f) - 15) * 0.16); } } } // (well down, under the sea)
     const X = [], Y = [], Z = [], S = [], f = new Float64Array(n), b = new Float64Array(n), dir = (i) => { const a = Math.max(0, i - 1) * 3, c = Math.min(n - 1, i + 1) * 3, x = p[c] - p[a], z = p[c + 1] - p[a + 1], l = Math.hypot(x, z) || 1; return [x / l, z / l]; }, put = (x, y, z, h) => { X.push(x); Y.push(y); Z.push(z); S.push(h); };
-    const wide = (i) => { const e = Math.min(s[i], this.len - s[i]); return K.lat + (Math.sign(K.lat) * 1.15 - K.lat) * (this.kind === 'mbus' ? 1 - ease(e / 4) : 0); }, side = (i, g) => { const [dx, dz] = dir(i), o = wide(i) * g; return [p[i * 3] - dz * o, p[i * 3 + 2], p[i * 3 + 1] + dx * o]; };
+    this.shuttle = !!d.shuttle; // (Tünel: two cars on one rope, one way but in the middle, where they pass: SHUTTLE)
+    const wide = (i) => { if (this.shuttle) return K.lat * this.loop(s[i]); const e = Math.min(s[i], this.len - s[i]); return K.lat + (Math.sign(K.lat) * 1.15 - K.lat) * (this.kind === 'mbus' ? 1 - ease(e / 4) : 0); }, side = (i, g) => { const [dx, dz] = dir(i), o = wide(i) * g; return [p[i * 3] - dz * o, p[i * 3 + 2], p[i * 3 + 1] + dx * o]; };
     const turn = (i, g) => { const [dx, dz] = dir(i), o = Math.abs(wide(i)); for (let k = 1; k < 10; k++) { const a = (k / 10) * Math.PI, u = Math.cos(a) * wide(i) * g, v = Math.sin(a) * o * g; put(p[i * 3] - dz * u + dx * v, p[i * 3 + 2], p[i * 3 + 1] + dx * u + dz * v, st[i]); } };
     for (let i = 0; i < n; i++) { f[i] = X.length; put(...side(i, 1), st[i]); } turn(n - 1, 1); for (let i = n - 1; i >= 0; i--) { b[i] = X.length; put(...side(i, -1), st[i]); } turn(0, -1);
     this.lay(X, Y, Z, S, true); const L = this.L, on = (arr, v) => { let i = 0; while (i < n - 2 && s[i + 1] < v) i++; const t = Math.min(1, (v - s[i]) / Math.max(1e-6, s[i + 1] - s[i])), A = L[arr[i]], B = L[arr[i + 1]]; return A + (B - A) * t; };
     this.alongF = (v) => on(f, v); this.alongB = (v) => on(b, v); this.ends = [L[f[0]], L[f[n - 1]], L[b[n - 1]], L[b[0]]];
   }
+  // how far apart its two ways are there, of K.lat: a shuttle's one way parts in the middle and joins again
+  loop(v) { const m = this.len / 2; return 1 - ease((Math.abs(v - m) - SHUTTLE.loop) / SHUTTLE.ease); }
   // the line itself at a distance: [x, y, z, dx, dz, i]
   frame(v) { const { s, p, n } = this; v = Math.min(this.len, Math.max(0, v)); let lo = 0, hi = n - 1; while (hi - lo > 1) { const q = (lo + hi) >> 1; if (s[q] <= v) lo = q; else hi = q; } const t = (v - s[lo]) / Math.max(1e-6, s[lo + 1] - s[lo]), a = Math.max(0, lo - 1) * 3, b = Math.min(n - 1, lo + 2) * 3, dx = p[b] - p[a], dz = p[b + 1] - p[a + 1], l = Math.hypot(dx, dz) || 1, k = lo * 3; return [p[k] + (p[k + 3] - p[k]) * t, p[k + 2] + (p[k + 5] - p[k + 2]) * t, p[k + 1] + (p[k + 4] - p[k + 1]) * t, dx / l, dz / l, lo]; }
 }
@@ -53,9 +59,11 @@ export class Service {
     if (this.via && A[0] - e[0] > half + 5 && d.off[0] > 45) { A.unshift(e[0] + 0.01); off.unshift(off[0] - (A[1] - e[0]) / v - 12); this.pre = 1; } if (this.via && e[1] - A[A.length - 1] > half + 5 && !ends) { A.push(e[1] - 0.01); off.push(off[off.length - 1] + (A[A.length - 1] - A[A.length - 2]) / v + 12); this.post = 1; }
     this.A = Float64Array.from(A); this.off = Float64Array.from(off); this.n = A.length; this.dep = d.dep.map((l) => { const u = unpack(l); if (!d.sec) for (let k = 0; k < u.length; k++) u[k] *= 60; return u; });
     this.t0 = this.off[0] - (this.pre ? 0 : LAY[way.kind] || 45); this.t1 = this.off[this.n - 1] + (this.post ? 0 : REST[way.kind] || 28);
+    if (way.shuttle) { let gap = 1e9; for (const D of this.dep) for (let k = 1; k < D.length; k++) gap = Math.min(gap, D[k] - D[k - 1]); const wait = Math.max(10, (gap - (this.off[this.n - 1] - this.off[0])) / 2); this.t0 = this.off[0] - wait; this.t1 = this.off[this.n - 1] + wait; } // (a shuttle's car stands at the end until it goes back: one leaves as the other comes in)
   }
   // the runs under way at time c of the city: fn(how long after setting out, which)
   runs(c, dow, day, fn) {
+    if (this.way.shuttle) for (let k = 1; k >= 0; k--) { const D = this.dep[dayType((dow + 7 - k) % 7)], N = this.dep[dayType((dow + 8 - k) % 7)], t = c + k * 86400; if (!D.length) continue; const last = D[D.length - 1]; if (t - last > this.t1 && t < 86400 + (N.length ? N[0] : 0) + this.t0) fn(t - last, (day - k) * 10000 + D.length - 1); } // (and the night through, where the last run left it)
     for (let k = 1; k >= 0; k--) { const D = this.dep[dayType((dow + 7 - k) % 7)], t = c + k * 86400; if (!D.length || t - this.t0 < D[0] || t - this.t1 > D[D.length - 1]) continue; let lo = 0, hi = D.length; const from = t - this.t1; while (lo < hi) { const m = (lo + hi) >> 1; if (D[m] < from) lo = m + 1; else hi = m; } for (; lo < D.length && D[lo] <= t - this.t0; lo++) fn(t - D[lo], (day - k) * 10000 + lo); }
   }
   // how far along a run is, t seconds (the city's) after it set out; how fast (units a second of ours); does it stand with its doors open, and where

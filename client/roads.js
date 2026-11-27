@@ -7,7 +7,9 @@ import { surf, weathered, cutAway, NONE } from './weather.js';
 import { buildTube } from './tube.js';
 import { pack, Batch, merge, normals } from './gpu.js';
 import { inSetts, inCobbles } from './squares.js';
-import { frameOf } from './parking.js';
+import { frameOf, DRIVE } from './parking.js';
+import { SHUTTLE } from '../shared/transit.js';
+import { frame as roadFrame, zebras } from '../shared/signplan.js';
 
 // how far above its line a road is drawn (so that none flickers through another)
 export const lift = (r) => (r.spur ? -0.003 : 0.004) + RANK[r.style] * 0.007 + (r.index % 5) * 0.0012;
@@ -22,34 +24,19 @@ const KERB = 0.13, kerbOf = (style, bridge) => ({ H: style === 'motorway' ? 0.2 
 // how far above the rim one stands there, `o` out from it; null: that is not on it
 const stepUp = (style, bridge, o, tight) => { const k = kerbOf(style, bridge); return o < -0.02 || o > KERB + (tight ? 0 : k.walk + 0.03) ? null : o < KERB + 0.005 ? k.H : k.top; };
 const RANK = { spur: 0, lane: 0, street: 0, shore: 1, avenue: 2, motorway: 3 };
-// Index each driveway in every cell reached by its 0.8-unit kerb cut.
+// Where the kerb is let down: across the width of each filling station's way in and out (DRIVE in parking.js), on the kerb that
+// faces the station (not the far side's; on a skewed or a side road too), within 8 of its front. `near` whether a kerb point is about a station's front (the kerb is swept finer there); stations
+// are indexed by 8-unit cell, so most kerb samples cost one map lookup.
 function drivewayLookup(stations) {
-  const cells = new Map();
-  const cell = value => Math.floor(value / 8);
+  const cells = new Map(), cell = (v) => Math.floor(v / 8), A = DRIVE.lanes.reduce((m, a) => Math.max(m, Math.abs(a)), 0) + DRIVE.far + 0.3;
   for (const station of stations) {
-    const frame = frameOf(station);
-    for (const lane of [-1.15, 1.15]) {
-      const [x, z] = frame.at(lane, 0), [bx, bz] = frame.at(lane, -8);
-      const dx = bx - x, dz = bz - z;
-      const segment = { x, z, dx, dz, length2: dx * dx + dz * dz };
-      for (let i = cell(Math.min(x, bx) - 0.8); i <= cell(Math.max(x, bx) + 0.8); i++) {
-        for (let j = cell(Math.min(z, bz) - 0.8); j <= cell(Math.max(z, bz) + 0.8); j++) {
-          const key = i * 8192 + j;
-          if (!cells.has(key)) cells.set(key, []);
-          cells.get(key).push(segment);
-        }
-      }
-    }
+    const frame = frameOf(station), s = { frame, x: station.x, z: station.z };
+    const box = [[-A, 0.6], [A, 0.6], [A, -8.4], [-A, -8.4]].map(([a, b]) => frame.at(a, b)), xs = box.map((p) => p[0]), zs = box.map((p) => p[1]);
+    for (let i = cell(Math.min(...xs)); i <= cell(Math.max(...xs)); i++) for (let j = cell(Math.min(...zs)); j <= cell(Math.max(...zs)); j++) { const key = i * 8192 + j; if (!cells.has(key)) cells.set(key, []); cells.get(key).push(s); }
   }
-  return (x, z) => {
-    const nearby = cells.get(cell(x) * 8192 + cell(z));
-    if (!nearby) return false;
-    return nearby.some(s => {
-      const px = x - s.x, pz = z - s.z;
-      const t = Math.max(0, Math.min(1, (px * s.dx + pz * s.dz) / s.length2));
-      return Math.hypot(px - s.dx * t, pz - s.dz * t) < 0.8;
-    });
-  };
+  const near = (x, z) => { const nearby = cells.get(cell(x) * 8192 + cell(z)); return !!nearby && nearby.some((s) => { const [a, b] = s.frame.of(x, z); return Math.abs(a) < A + 1 && b < 1.6 && b > -9.4; }); }; // (before its front: a segment's end within a unit of it)
+  const at = (x, z, nx, nz) => { const nearby = cells.get(cell(x) * 8192 + cell(z)); return !!nearby && nearby.some((s) => { if (nx * (s.x - x) + nz * (s.z - z) <= 0) return false; /* (a kerb that faces the station: the far side's faces away) */ const [a, b] = s.frame.of(x, z); return b < 0.3 && b > -8 && DRIVE.lanes.some((l) => Math.abs(a - l) < DRIVE.far + 0.02); }); };
+  return { near, at };
 }
 export function buildRoads(W) {
   const { root, net, night, height, coast } = W, V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -112,14 +99,26 @@ export function buildRoads(W) {
   const above = (x, z, y, self) => { let c = false; net.around(x, z, (r, i, t, d, h) => { if (r !== self && d < r.hw + 0.7 && h < y - 0.85 && h > y - 4) c = true; }); return c; };
   // where a filling station's way in or out crosses the pavement the kerb is let down (client/parking.js lays the apron over it)
   const dropped = drivewayLookup(W.A.parking?.stations || []);
+  // where a zebra meets the kerb, the kerb no higher than the pavement: who crosses there steps over no lip (`near`: the kerb is swept finer about it)
+  const walks = (() => { const cells = new Map(), key = (x, z) => Math.floor(x / 8) * 8192 + Math.floor(z / 8); for (const { r, s } of zebras(net)) { const f = roadFrame(r, s, 1), z = [f.x, f.z, f.dx, f.dz, r.hw + 1.0]; for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const k = key(f.x + a * 8, f.z + b * 8); if (!cells.has(k)) cells.set(k, []); cells.get(k).push(z); } }
+    return { at: (x, z) => (cells.get(key(x, z)) || []).some(([cx, cz, dx, dz, R]) => Math.abs((x - cx) * dx + (z - cz) * dz) < 0.5 && Math.abs((z - cz) * dx - (x - cx) * dz) < R), near: (x, z) => (cells.get(key(x, z)) || []).some(([cx, cz, , , R]) => Math.hypot(x - cx, z - cz) < R + 2) }; })();
+  // over Tünel's tube, the ground thin there: how high its roof is under a point, if it is under it (a pavement's side reaches no lower: else it hangs into the tube)
+  const tube = (() => { const S = []; for (const l of W.transit?.lines || []) if (l.shuttle) for (let i = 0; i + 1 < l.n; i++) if (l.st[i] === 2 || l.st[i + 1] === 2) S.push([l.p[i * 3], l.p[i * 3 + 1], l.p[i * 3 + 3], l.p[i * 3 + 4], Math.max(l.p[i * 3 + 2], l.p[i * 3 + 5]) + SHUTTLE.H, SHUTTLE.W + Math.abs(l.K.lat) + 0.25]);
+    return (x, z) => { let top = null; for (const [ax, az, bx, bz, y, R] of S) { const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1))); if (Math.hypot(ax + dx * t - x, az + dz * t - z) < R) top = Math.max(top ?? -1e9, y); } return top; }; })();
   const profile = (p, nx, nz, y, r, side, bridge, tight) => { // nx, nz point outwards; returns the profile's points
-    const at = (o, up) => [p[0] + nx * o, y + up, p[1] + nz * o], low = !bridge && r.style !== 'motorway' && dropped(p[0] + nx * 0.3, p[1] + nz * 0.3), { H, top, walk } = low ? { H: -0.02, top: -0.02, walk: 0.55 } : kerbOf(r.style, bridge);
+    const at = (o, up) => [p[0] + nx * o, y + up, p[1] + nz * o], low = !bridge && r.style !== 'motorway' && dropped.at(p[0] + nx * 0.3, p[1] + nz * 0.3, nx, nz), { top, walk, ...k } = low ? { H: -0.02, top: -0.02, walk: 0.55 } : kerbOf(r.style, bridge), H = !low && !bridge && r.style !== 'motorway' && walks.at(p[0], p[1]) ? top : k.H;
     if (tight) { const a = [at(0, -0.02), at(0.02, H), at(0.11, H), at(KERB, -0.3)]; return bridge ? [...a, at(-r.hw * 0.4, -0.42)] : a; }
     const pts = [at(0, -0.02), at(0.02, H), at(0.11, H), at(KERB, bridge ? 0.05 : top), at(KERB + walk, top)];
     const g = height(p[0] + nx * (walk + 0.2), p[1] + nz * (walk + 0.2));
-    pts.push(at(0.15 + walk, bridge ? -0.34 : Math.min(-0.2, Math.max(-3, g - y - 0.4))));
+    const roof = bridge ? null : tube(p[0] + nx * (0.15 + walk), p[1] + nz * (0.15 + walk)); pts.push(at(0.15 + walk, bridge ? -0.34 : Math.min(-0.2, Math.max(-3, g - y - 0.4, roof === null ? -9 : roof + 0.05 - y))));
     if (bridge) pts.push(at(-r.hw * 0.4, -0.42));
     return pts;
+  };
+  // a kerb swept from one edge point to the next; by a filling station in tenths, so that the let-down part begins where its way in does
+  const sweep = (K, a, b, r, e, bridge, tight, up, C) => {
+    const n = dropped.near(a.p[0], a.p[1]) || dropped.near(b.p[0], b.p[1]) || walks.near(a.p[0], a.p[1]) ? 10 : 1, mid = (t) => { const nx = a.nx + (b.nx - a.nx) * t, nz = a.nz + (b.nz - a.nz) * t, l = Math.hypot(nx, nz) || 1; return profile([a.p[0] + (b.p[0] - a.p[0]) * t, a.p[1] + (b.p[1] - a.p[1]) * t], nx / l, nz / l, a.y + (b.y - a.y) * t + up, r, e, bridge, tight); };
+    let pa = profile(a.p, a.nx, a.nz, a.y + up, r, e, bridge, tight);
+    for (let k = 1; k <= n; k++) { const pb = k === n ? profile(b.p, b.nx, b.nz, b.y + up, r, e, bridge, tight) : mid(k / n); for (let q = 0; q + 1 < pa.length; q++) strip(K, [pa[q], pa[q + 1]], [pb[q], pb[q + 1]], C[Math.min(q, C.length - 1)]); pa = pb; }
   };
   const COLS = (r) => [r.style === 'motorway' ? RAIL : r.style === 'shore' ? SHORE : CONC, r.style === 'motorway' ? RAIL : CONC, CONC, PAVE, SIDE, SIDE];
   const batch = new Batch(), finish = (K) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(K.pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(K.col, 3)); g.setIndex(K.idx); normals(g); batch.add(pack(g), kerb, 1.35); };
@@ -144,7 +143,7 @@ export function buildRoads(W) {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aRoad', new THREE.Float32BufferAttribute(road, 4)); g.setAttribute('aHub', new THREE.Float32BufferAttribute(hub, 1)); g.setIndex(idx); normals(g);
       if (g.attributes.normal.getY(0) < 0) { for (let k = 0; k < idx.length; k += 3) { const t = idx[k]; idx[k] = idx[k + 1]; idx[k + 1] = t; } g.setIndex(idx); normals(g); }
       batch.add(pack(g), tube ? inside : asphalt, 1.6);
-      edges.forEach((E, e) => { for (let i = i0; i < i1; i++) { const a = E[i], b = E[i + 1]; if (!a.free || !b.free) continue; const pa = profile(a.p, a.nx, a.nz, a.y + up, r, e, a.bridge && b.bridge, a.tight || b.tight), pb = profile(b.p, b.nx, b.nz, b.y + up, r, e, a.bridge && b.bridge, a.tight || b.tight), C = COLS(r); for (let k = 0; k + 1 < pa.length; k++) strip(K, [pa[k], pa[k + 1]], [pb[k], pb[k + 1]], C[Math.min(k, C.length - 1)]); } });
+      edges.forEach((E, e) => { for (let i = i0; i < i1; i++) { const a = E[i], b = E[i + 1]; if (!a.free || !b.free) continue; sweep(K, a, b, r, e, a.bridge && b.bridge, a.tight || b.tight, up, COLS(r)); } });
       if (K.idx.length) finish(K);
     }
     // lamps, by turns on either side (the light pools of the asphalt's shader)
@@ -162,7 +161,7 @@ export function buildRoads(W) {
 
     const K = makeKerb(), fake = { style: 'avenue', hw: 2 };
     const E = Array.from({ length: 49 }, (_, k) => { const t = (k / 48) * Math.PI * 2, nx = Math.sin(t), nz = Math.cos(t), Rt = net.discR(d, t), x = d.x + nx * Rt, z = d.z + nz * Rt; let on = soft && setts(x, z); net.around(x, z, (r, i, tt, D, h) => { if (D < r.hw - 0.02 && Math.abs(h - d.h) < 0.9) on = true; }); if (net.transit && net.transit.mouth(x, z)) on = true; return { p: [x, z], nx, nz, y: y0(x, z), free: !on, tight: !on && crowded(x, z, nx, nz, y0(x, z), null, [0.35, 0.6]) }; });
-    for (let k = 0; k < 48; k++) { const a = E[k], b = E[k + 1]; if (!a.free || !b.free) continue; const pa = profile(a.p, a.nx, a.nz, a.y, fake, 0, false, a.tight || b.tight), pb = profile(b.p, b.nx, b.nz, b.y, fake, 0, false, a.tight || b.tight), C = COLS(fake); for (let q = 0; q + 1 < pa.length; q++) strip(K, [pa[q], pa[q + 1]], [pb[q], pb[q + 1]], C[q]); }
+    for (let k = 0; k < 48; k++) { const a = E[k], b = E[k + 1]; if (!a.free || !b.free) continue; sweep(K, a, b, fake, 0, false, a.tight || b.tight, 0, COLS(fake)); }
     if (K.idx.length) finish(K);
     { const e = { d, f: Uint8Array.from(E, (q) => (q.free ? (q.tight ? 5 : 1) : 0)), y: Float32Array.from(E, (q) => q.y) }, R = d.r + 0.8; for (let a = Math.floor((d.x - R) / 8); a <= Math.floor((d.x + R) / 8); a++) for (let b = Math.floor((d.z - R) / 8); b <= Math.floor((d.z + R) / 8); b++) { const k = a * 8192 + b; if (!rounds.has(k)) rounds.set(k, []); rounds.get(k).push(e); } }
   }
@@ -172,9 +171,9 @@ export function buildRoads(W) {
     near.clear(); net.around(x, z, (r, i, t, d) => { let e = near.get(r.index); if (!e) near.set(r.index, (e = { r, d: 1e9 })); if (d < e.d) { e.d = d; e.i = i; e.t = t; } }); // (of each road the stretch one is by)
     for (const { r, i, t, d } of near.values()) {
       const o = d - r.hw; if (o < -0.02 || o > 0.72 || (t <= 0 && i === 0) || (t >= 1 && i === r.n - 2)) continue; const a = i * 3, p = r.p, side = -(x - p[a]) * (p[a + 4] - p[a + 1]) + (z - p[a + 1]) * (p[a + 3] - p[a]) > 0 ? 0 : 1, e = rims[r.index][side]; if (!e.f[i] || !e.f[i + 1]) continue;
-      const u = stepUp(r.style, !!(e.f[i] & e.f[i + 1] & 2), o, !!((e.f[i] | e.f[i + 1]) & 4)); if (u !== null) take(e.y[i] + (e.y[i + 1] - e.y[i]) * t + u);
+      let u = stepUp(r.style, !!(e.f[i] & e.f[i + 1] & 2), o, !!((e.f[i] | e.f[i + 1]) & 4)); if (u !== null && r.style !== 'motorway' && !(e.f[i] & e.f[i + 1] & 2) && walks.at(x, z)) u = Math.min(u, kerbOf(r.style, false).top); /* (let down at a zebra, as drawn) */ if (u !== null) take(e.y[i] + (e.y[i + 1] - e.y[i]) * t + u);
     }
-    for (const { d, f, y: Y } of rounds.get(Math.floor(x / 8) * 8192 + Math.floor(z / 8)) || []) { const dx = x - d.x, dz = z - d.z, a = ((Math.atan2(dx, dz) / (Math.PI * 2) + 1) % 1) * 48, k = Math.min(47, Math.floor(a)), u = stepUp('avenue', false, Math.hypot(dx, dz) - d.r, !!((f[k] | f[k + 1]) & 4)); if (u === null) continue; if (f[k] && f[k + 1]) take(Y[k] + (Y[k + 1] - Y[k]) * (a - k) + u); }
+    for (const { d, f, y: Y } of rounds.get(Math.floor(x / 8) * 8192 + Math.floor(z / 8)) || []) { const dx = x - d.x, dz = z - d.z, a = ((Math.atan2(dx, dz) / (Math.PI * 2) + 1) % 1) * 48, k = Math.min(47, Math.floor(a)), u0 = stepUp('avenue', false, Math.hypot(dx, dz) - d.r, !!((f[k] | f[k + 1]) & 4)); if (u0 === null) continue; const u = walks.at(x, z) ? Math.min(u0, kerbOf('avenue', false).top) : u0; if (f[k] && f[k + 1]) take(Y[k] + (Y[k + 1] - Y[k]) * (a - k) + u); }
     return best;
   };
   batch.flush(W);

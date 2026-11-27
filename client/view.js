@@ -173,6 +173,9 @@ export class View {
     if (this.lost) return; this.camera.updateMatrixWorld(); cut.cam.value.copy(this.camera.matrixWorld);
     this.sky.position.copy(this.camera.position); this.sky.material.uniforms.uTime.value = now / 1000;
     if (this.world) { const f = Math.min(this.far, this.camera === this.ortho ? 1e3 : 2.9 / this.scene.fog.density); this.world.update(dt, now, this.look || this.camera.position, f); }
+    // from a hall below only what is of it (marked userData.below: the hall, its trains, the ways down, who walks there) and the lights: the street over a shallow one – ground, sea, roads, houses, cars – may reach down into it (and so in the mirror too)
+    const hid = []; if (this.world && this.world.deepNow) for (const o of this.scene.children) if (o.visible && !o.isLight && !o.userData.below) { o.visible = false; hid.push(o); }
+    if (this.world && this.world.blind && !this.world.deepNow) for (const o of this.world.still.children) if (o.visible && o.userData.house) { o.visible = false; hid.push(o); } // (from Tünel's tube, under thin ground: not the houses, whose feet reach down into it)
     if (this.cabin && this.cabin.mirror && this.camera === this.persp) this.cabin.mirror.render(this, this.level === 'high' ? 2 : this.level === 'medium' ? 3 : 4);
     // On Low, reuse the sun's map on alternate frames. Refresh immediately after
     // a long gap or a quality change so the first frame has a valid shadow.
@@ -184,8 +187,6 @@ export class View {
         this.shadowAtMs = now;
       }
     }
-    // from a hall below only what is of it (marked userData.below: the hall, its trains, the ways down, who walks there) and the lights: the street over a shallow one – ground, sea, roads, houses, cars – may reach down into it
-    const hid = []; if (this.world && this.world.deepNow) for (const o of this.scene.children) if (o.visible && !o.isLight && !o.userData.below) { o.visible = false; hid.push(o); }
     if (this.quality.post) this.post.render(this.scene, this.camera); else { this.renderer.setRenderTarget(null); this.renderer.render(this.scene, this.camera); }
     for (const o of hid) o.visible = true;
     if (this.watch) this.watch.frame(now);

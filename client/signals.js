@@ -1,6 +1,6 @@
 // Traffic lights where OSM has them, each way; zebra crossings, stop lines.
 import * as THREE from './vendor/three.module.min.js';
-import { frame } from '../shared/signplan.js';
+import { frame, zebras } from '../shared/signplan.js';
 import { weathered } from './weather.js';
 import { lightAt } from '../shared/streets.js';
 export function buildSignals(W) {
@@ -9,9 +9,9 @@ export function buildSignals(W) {
   const pos = [], col = [], idx = [], yAt = (x, z, y) => { const q = net.at(x, z, y + 0.2, null, out); return (q && Math.abs(q.h - y) < 0.5 ? q.h : y) + 0.052; };
   const quad = (f, u0, u1, s0, s1, c) => { const b = pos.length / 3, rx = -f.dz, rz = f.dx; for (const [u, s] of [[u0, s0], [u1, s0], [u0, s1], [u1, s1]]) { const x = f.x + rx * u + f.dx * s, z = f.z + rz * u + f.dz * s; pos.push(x, yAt(x, z, f.y), z); col.push(c, c, c); } idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); };
   const zebra = (r, s) => { const f = frame(r, s, 1); for (let u = -r.hw + 0.3; u < r.hw - 0.25; u += 0.34) quad(f, u, u + 0.18, -0.45, 0.45, 0.62); };
-  for (const c of st.data.crossings) { const r = net.byId.get(c.road); if (r && c.s > 3 && c.s < r.len - 3 && !(st.byRoad.get(r.index) || []).some((q) => Math.abs(q.s - c.s) < 3)) zebra(r, c.s); }
+  for (const { r, s } of zebras(net)) zebra(r, s);
   for (const q of st.signals) {
-    const r = q.r; if (q.s < 2.5 || q.s > r.len - 2.5) continue; zebra(r, q.s);
+    const r = q.r; if (q.s < 2.5 || q.s > r.len - 2.5) continue; // (its zebra: zebras, above)
     for (const dir of [1, -1]) {
       const f = frame(r, q.s - dir * 0.85, dir), rx = -f.dz, rz = f.dx, yaw = Math.atan2(-f.dx, -f.dz); quad(f, 0.1, r.hw - 0.22, -0.07, 0.07, 0.62);
       const px = f.x + rx * (r.hw + 0.3), pz = f.z + rz * (r.hw + 0.3), k = net.at(px, pz, f.y, null, out); if (k && k.inside > -0.1 && Math.abs(k.h - f.y) < 0.8) continue;

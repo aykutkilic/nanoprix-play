@@ -21,6 +21,7 @@ const BUSES = {
   '129T': { fare: 9240, takes: false, then: { takes: true, from: { Üstbostancı: '15 Temmuz Şehitler Köprüsü' } } },
   251: { fare: 9240, takes: false, then: { takes: false, from: { Mecidiyeköy: 'Köprülü Kavşak', Pendik: '15 Temmuz Şehitler Köprüsü' } } },
 };
+export const SPECIAL = Object.keys(BUSES); // (the lines of the game keep these: tools/lines.mjs)
 const FREE = [['16D', '4']]; // free from the one to the other (rule 14)
 const fold = (s) => String(s || '').toLocaleLowerCase('tr').replace(/ı/g, 'i').replace(/[^a-zçğıöşüâîû0-9]/g, '');
 // ---------------------------------------------------------------- the ferries: named in the tariff; else by the mile, along the line through those that are

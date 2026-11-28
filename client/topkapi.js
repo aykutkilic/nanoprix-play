@@ -4,7 +4,7 @@
 import * as THREE from './vendor/three.module.min.js';
 import { houseMask } from './assets.js';
 import { handOver } from './gpu.js';
-// the toys of the old model these take the place of (tools/topkapi.mjs REPLACES)
+// the toys of the old model these take the place of (tools/precinct.mjs REPLACES)
 export const REPLACES = new Set(['topkapi-sarayi', 'topkapi-aya-irini', 'cinili-kosk', 'sark-eserleri-muzesi', 'alay-kosku', 'ahmet-hamdi-tanpinar-edebiyat-muze-kutuphanesi']);
 const BASE = new URL('../assets/', import.meta.url), NEAR = 25; // (closer than this to its precinct, in units, the pieces; further, the light one)
 const get = async (n, gz) => { const r = await fetch(new URL(n, BASE)); if (!r.ok) throw new Error(`${n}: ${r.status}`); return gz ? new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer() : r.json(); };

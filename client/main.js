@@ -249,7 +249,7 @@ let settingsOpen = false, journalOpen = false, paused = false, drawn = '';
 const nightBtn = () => `<button data-do="night">${view.night > 0.5 ? '☀️' : '🌙'}</button>`, keysHtml = () => (input.touchEl ? '' : `<p class="desc">${t('controls')}</p>`);
 function draw() {
   if (host?.room) {
-    const freeze = screen === 'race' && !game.free && (paused || settingsOpen) && host.room.localSolo;
+    const freeze = screen === 'race' && (paused || settingsOpen || journalOpen) && host.room.localSolo; // (a solo cruise too: its clock, the traffic, the tank and a fine's minutes wait with the menu)
     host.room.pauseSolo(freeze);
     if (freeze && !input.menu) { input.keys.clear(); game.audio.quiet(); }
   }

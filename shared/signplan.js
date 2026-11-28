@@ -26,13 +26,13 @@ export function planSigns(net, marks = [], ports = []) {
   // the post's foot must be off every road at its level, the panel clear of any deck above
   const free = (x, z, y, top) => { const k = net.at(x, z, y, null, q); if (net.transit && net.transit.over(x, z, y - 0.5, y + top)) return false; if (k && k.inside > -0.12 && Math.abs(k.h - y) < 0.9) return false; let under = false; net.around(x, z, (r, i, t, d, h) => { if (d < r.hw + 0.3 && h > y + 0.5 && h < y + top + 0.4) under = true; }); return !under; };
   const put = (kind, r, s, dir, o = {}) => {
-    const f = frame(r, s, dir), lat = r.hw + 0.34, rx = -f.dz, rz = f.dx, x = f.x + rx * lat, z = f.z + rz * lat, top = kind === 'gantry' ? 4 : 3.2;
+    const f = frame(r, s, dir), side = o.side || 1, lat = side * (r.hw + 0.34), rx = -f.dz, rz = f.dx, x = f.x + rx * lat, z = f.z + rz * lat, top = kind === 'gantry' ? 4 : 3.2;
     if (!free(x, z, f.y, top)) return false;
     if (kind === 'gantry' && !free(f.x - rx * lat, f.z - rz * lat, f.y, top)) return put('panel', r, s, dir, o);
     const gap = kind === 'gantry' || kind === 'panel' ? 7 : 2.4;
     if (r.tunnel && r.tunnel[Math.round((s / r.len) * (r.n - 1))]) return false;
-    if (used.some((u) => u.r === r && u.dir === dir && Math.abs(u.s - s) < Math.max(gap, u.gap))) return false;
-    used.push({ r, dir, s, gap }); out.push({ kind, x, z, y: f.y, cx: f.x, cz: f.z, dx: f.dx, dz: f.dz, hw: r.hw, road: r.id, s, dir, ...o }); return true;
+    if (used.some((u) => u.r === r && u.dir === dir && u.side === side && Math.abs(u.s - s) < Math.max(gap, u.gap))) return false;
+    used.push({ r, dir, s, gap, side }); out.push({ kind, x, z, y: f.y, cx: f.x, cz: f.z, dx: f.dx, dz: f.dz, hw: r.hw, road: r.id, s, dir, ...o }); return true;
   };
   // past a hub of two roads there is nothing to choose: the sign names what comes after
   const far = (r, to) => { let h = to, road = r; for (let k = 0; k < 3; k++) { const e = net.adj.get(h); if (e.length !== 2) break; const n = e.find((c) => c.r !== road); if (!n) break; if (PLACE[h] && k === 0 && road.len > 60) break; road = n.r; h = n.to; } return h; };
@@ -94,6 +94,8 @@ export function planSigns(net, marks = [], ports = []) {
   // a road that leads nowhere says so where one turns into it, and again where it stops
   const dead = deadEnds(net, marks, ports);
   for (const e of dead) { const r = e.r, go = (n) => (e.dir > 0 ? n : r.len - n), end = (n) => (e.dir > 0 ? r.len - n : n); if (r.len > 6) for (const n of r.spur ? [2.6, 3.4, 4.4, 6, 8] : [r.len - 14, r.len - 18, r.len - 10]) if (n < r.len - 2 && n > 1 && put('deadend', r, go(n), e.dir)) break; for (const n of [0.5, 1.2, 2]) if (put('blocked', r, end(n), e.dir)) break; }
+  // a one-way road says no entry to whoever would come in at its end, against its way
+  for (const r of net.main) if (r.one) for (const side of [1, -1]) for (const n of [1.2, 2, 3, 4.5, 6, 8, 12]) if (n < r.len - 2 && put('noentry', r, r.len - n, -1, { side })) break; // (on both sides, where there is room)
   return out;
 }
 export { frame };

@@ -115,6 +115,17 @@ b.tl { font-variant-numeric: tabular-nums; } b.tl.no { color: #ff8a70; } #hud .b
 }
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 350px) { #hud .tw .mode, #hud .trip > p, #hud .trip .ikart p { display: none; } #hud .tower li { height: 16px; } #hud .trip > ul > li:nth-child(n + 4) { display: none; } }
 
+/* the pump's and the market's panel (client/fuel.js): what is offered is a button, for a touch or a click as well as its number key */
+#hud .fuel { position: absolute; right: 14px; bottom: 122px; font: 600 13px/1.35 system-ui, sans-serif; color: #fff; background: rgba(14,12,10,.62); border-radius: 10px; padding: 6px 10px; text-align: right; min-width: 170px; text-shadow: none; }
+#hud .fuel .pick { pointer-events: auto; display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; margin: 1px 0; padding: 1px 4px; border: 0; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-weight: 500; text-align: left; cursor: pointer; touch-action: manipulation; }
+#hud .fuel .pick:hover { background: rgba(255,255,255,.14); }
+@media (pointer: coarse) {
+  #hud .fuel { right: 12px; bottom: auto; top: 226px; font-size: 12px; min-width: 210px; max-width: calc(100% - 24px); max-height: calc(100% - 418px); overflow: auto; overscroll-behavior: contain; }
+  #hud .fuel .pick { min-height: 32px; margin: 3px 0; padding: 2px 7px; background: rgba(255,255,255,.12); white-space: nowrap; }
+}
+/* (sideways there is no room by the pedals: one is standing still at a pump or a till, so it comes to the middle) */
+@media (pointer: coarse) and (orientation: landscape) { #hud .fuel { top: 50px; right: auto; left: 50%; transform: translateX(-50%); max-height: calc(100% - 154px); } }
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 350px) { #hud .fuel { top: 44px; max-height: calc(100% - 144px); font-size: 11px; line-height: 1.25; padding: 4px 8px; min-width: 0; } #hud .fuel .pick { min-height: 25px; margin: 2px 0; gap: 8px; } }
 #hud .activity { position: absolute; left: 50%; bottom: 16%; transform: translateX(-50%); max-width: min(72vw, 34rem); padding: .45em .8em; border-radius: .5em; background: #211d17e8; color: white; text-align: center; font-size: clamp(12px, 1.6vw, 17px); }
 #hud .activity:empty { display: none; }
 @media (pointer: coarse) { #hud .activity { bottom: 25%; max-width: 65vw; } }

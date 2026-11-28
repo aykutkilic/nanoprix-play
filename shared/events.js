@@ -1,5 +1,5 @@
 // Bump the trial version when the Pera course, car physics or event rules change.
-export const TRIAL_VERSION = 1;
+export const TRIAL_VERSION = 2; // (2: Pera goes round by the Taksim tunnel and Mete Caddesi)
 export const QUICK_RACE = Object.freeze({
   mode: 'race', course: 'pera', laps: 1, reverse: false, weather: 'clear',
   light: 'day', bots: 3, level: 0, traffic: 0,

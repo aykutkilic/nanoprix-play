@@ -101,7 +101,7 @@ export class View {
     const K = this.cam, v = Math.hypot(c.vx, c.vz), a = K.init ? Math.min(1, dt * 5) : 1, lead = 0.42;
     const tx = c.x + c.vx * lead, tz = c.z + c.vz * lead; if (!K.init) K.iso = { x: tx, y: c.y, z: tz, h: 9 };
     const I = (K.iso ||= { x: tx, y: c.y, z: tz, h: 9 }); I.x += (tx - I.x) * a; I.z += (tz - I.z) * a; I.y += (c.y - I.y) * a; I.h += ((8.5 + v * 0.22) * this.zoom - I.h) * Math.min(1, dt * 3); K.init = true;
-    const o = (this.camera = this.ortho), h = I.h, w = (h * innerWidth) / innerHeight; Object.assign(o, { left: -w, right: w, top: h, bottom: -h }); o.updateProjectionMatrix();
+    const o = (this.camera = this.ortho), h = I.h, w = (h * innerWidth) / innerHeight; Object.assign(o, { left: -w, right: w, top: h, bottom: -h, near: 1, far: 420 }); o.updateProjectionMatrix();
     K.shake = Math.max(0, K.shake - dt * 3); const s = K.shake * 0.1, D = 150;
     o.position.set(I.x + D * ISO.x + (Math.random() - 0.5) * s, I.y + D * ISO.y, I.z + D * ISO.z + (Math.random() - 0.5) * s); o.lookAt(I.x, I.y, I.z);
     this.scene.fog.density = 0.0004 + (this.wx || CALM).fog * 0.15; this.look = I; this.shadowAt(I.x, I.y, I.z, Math.max(38, w * 1.15)); this.post.focus = D; this.post.tilt = this.tiltOn ? 0.7 : 0;
@@ -151,10 +151,19 @@ export class View {
   }
   // airplane mode (fly.js): the camera is where one flies
   fly(q) {
+    if (q.iso) { this.flyIso(q); return; }
     this.usePersp(); this.look = null; const c = this.camera, cp = Math.cos(q.pitch), sx = Math.sin(q.yaw) * cp, sy = Math.sin(q.pitch), sz = Math.cos(q.yaw) * cp;
     c.position.set(q.x, q.y, q.z); c.lookAt(q.x + sx, q.y + sy, q.z + sz); if (c.fov !== 72) { c.fov = 72; c.updateProjectionMatrix(); }
     const g = Math.max(0, this.world.height(q.x, q.z)), up = q.y - g, R = Math.min(150, 42 + up * 0.9), d = R * 0.7; this.shadowAt(q.x + Math.sin(q.yaw) * d, g, q.z + Math.cos(q.yaw) * d, Math.round(R / 12) * 12);
     this.post.focus = 20; this.post.tilt = 0;
+  }
+  // … looking down isometrically on q (as the isometric camera does), q.h half the picture's height; as far back as the view is wide
+  flyIso(q) {
+    const o = (this.camera = this.ortho), h = Math.min(q.h * this.zoom, this.far / 2.2), w = (h * innerWidth) / innerHeight, D = 150 + h * 1.5;
+    Object.assign(o, { left: -w, right: w, top: h, bottom: -h, near: 1, far: D + h * 2 + 250 }); o.updateProjectionMatrix();
+    o.position.set(q.x + D * ISO.x, q.y + D * ISO.y, q.z + D * ISO.z); o.lookAt(q.x, q.y, q.z); this.close = false; this.leaves(null);
+    this.scene.fog.density = 0.0004 + (this.wx || CALM).fog * 0.15; this.look = (this.flyLook ||= { x: 0, y: 0, z: 0 }); Object.assign(this.look, { x: q.x, y: q.y, z: q.z });
+    this.shadowAt(q.x, q.y, q.z, Math.max(38, w * 1.15)); this.post.focus = D; this.post.tilt = 0;
   }
   shadowAt(x, y, z, R = 42) {
     if (R > 150) R = 150; const s = this.sun, n = s.shadow.mapSize.x, step = (2 * R) / n; // (stepped, so the edges do not crawl)
